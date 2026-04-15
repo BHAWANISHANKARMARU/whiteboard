@@ -353,11 +353,32 @@ function scheduleRedraw(){
   });
 }
 
+// ── Persisted Settings ──
+const SETTINGS_KEY = 'whiteboard_settings_v1';
+const PEN_COLORS_KEY = 'whiteboard_pen_colors_v1';
+function loadSettings(){
+  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; }
+  catch(e){ return {}; }
+}
+function saveSettings(){
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+      color, lineWidth, penStyle, bgColor, showGrid, gridColor, gridStyle, gridSize
+    }));
+    localStorage.setItem(PEN_COLORS_KEY, JSON.stringify(penColors));
+  } catch(e){}
+}
+function loadPenColors(){
+  try { return JSON.parse(localStorage.getItem(PEN_COLORS_KEY)) || {}; }
+  catch(e){ return {}; }
+}
+const _s = loadSettings();
+
 // ── State ──
 let tool = 'pen';
-let penStyle = 'thin';
-let color = '#1e1e1e';
-let lineWidth = 2;
+let penStyle = _s.penStyle || 'thin';
+let color = _s.color || '#1e1e1e';
+let lineWidth = _s.lineWidth || 2;
 let zoom = 1;
 let panX = 0, panY = 0;
 let isPanning = false, panStart = {x:0,y:0};
@@ -365,13 +386,17 @@ let strokes = [], redoStack = [];
 let isDrawing = false, currentPath = [], shapeStart = null;
 let selectedIdx = -1, isDraggingSel = false, dragOff = {x:0,y:0};
 
+// Per-pen remembered colors (each pen remembers its last color)
+let penColors = loadPenColors();
+if(penColors[penStyle]) color = penColors[penStyle];
+
 // Background settings
-let bgColor = '#ffffff';
-let showGrid = true;
-let gridColor = '#000000';
+let bgColor = _s.bgColor || '#ffffff';
+let showGrid = _s.showGrid !== undefined ? _s.showGrid : true;
+let gridColor = _s.gridColor || '#000000';
 let gridOpacity = 0.07;
-let gridStyle = 'dots';  // dots | lines | cross
-let gridSize = 20;
+let gridStyle = _s.gridStyle || 'dots';
+let gridSize = _s.gridSize || 20;
 
 // ── HiDPI Resize ──
 function resize(){
@@ -462,6 +487,7 @@ document.addEventListener('pointerdown', e => {
 document.getElementById('bgColorPicker').addEventListener('input', e => {
   bgColor = e.target.value;
   document.querySelectorAll('.bg-swatch').forEach(s => s.classList.remove('active'));
+  saveSettings();
   redrawAll();
 });
 
@@ -472,10 +498,10 @@ document.querySelectorAll('.bg-swatch').forEach(sw => {
     document.getElementById('bgColorPicker').value = bgColor;
     document.querySelectorAll('.bg-swatch').forEach(s => s.classList.remove('active'));
     sw.classList.add('active');
-    // Auto-adjust grid opacity for dark backgrounds
     const r = parseInt(bgColor.slice(1,3),16), g = parseInt(bgColor.slice(3,5),16), b = parseInt(bgColor.slice(5,7),16);
     const lum = (r*299 + g*587 + b*114) / 1000;
     gridOpacity = lum < 80 ? 0.15 : 0.07;
+    saveSettings();
     redrawAll();
   });
 });
@@ -485,53 +511,63 @@ const gridToggleBtn = document.getElementById('gridToggle');
 gridToggleBtn.addEventListener('click', () => {
   showGrid = !showGrid;
   gridToggleBtn.classList.toggle('on', showGrid);
+  saveSettings();
   redrawAll();
 });
 
 // Grid color
 document.getElementById('gridColorPicker').addEventListener('input', e => {
   gridColor = e.target.value;
+  saveSettings();
   redrawAll();
 });
 
 // Grid style
 document.getElementById('gridStyle').addEventListener('change', e => {
   gridStyle = e.target.value;
+  saveSettings();
   redrawAll();
 });
 
 // Grid size
 document.getElementById('gridSizeSlider').addEventListener('input', e => {
   gridSize = +e.target.value;
+  saveSettings();
   redrawAll();
 });
 
-// Pen options
+// Pen options — each pen remembers its own color
 document.querySelectorAll('.pen-opt').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.pen-opt').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     penStyle = btn.dataset.pen;
+    // Restore this pen's last-used color (or keep current if none saved)
+    if(penColors[penStyle]) applyColor(penColors[penStyle]);
+    else saveSettings();
   });
 });
 
 // Colors
-document.querySelectorAll('.color-swatch').forEach(sw => {
-  sw.addEventListener('click', () => {
-    document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
-    sw.classList.add('active');
-    color = sw.dataset.color;
-    document.getElementById('customColor').value = color;
+function applyColor(newColor){
+  color = newColor;
+  penColors[penStyle] = newColor;
+  document.getElementById('customColor').value = newColor;
+  document.querySelectorAll('.color-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.color === newColor);
   });
+  saveSettings();
+}
+document.querySelectorAll('.color-swatch').forEach(sw => {
+  sw.addEventListener('click', () => applyColor(sw.dataset.color));
 });
 document.getElementById('customColor').addEventListener('input', e => {
-  color = e.target.value;
-  document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+  applyColor(e.target.value);
 });
 
 // Size
 const sizeSlider = document.getElementById('sizeSlider');
-sizeSlider.addEventListener('input', () => { lineWidth = +sizeSlider.value; });
+sizeSlider.addEventListener('input', () => { lineWidth = +sizeSlider.value; saveSettings(); });
 
 // ── Coordinate helper ──
 function canvasCoord(e){
@@ -602,7 +638,8 @@ function interpolateSpline(pts){
   return result;
 }
 
-// Pre-process raw input: compute speed, smooth jitter, interpolate for touchpad
+// Pre-process: compute speed at each point, gentle jitter smoothing
+// (input is already densely interpolated in onMove)
 function preprocessPoints(rawPoints){
   if(rawPoints.length < 2) return rawPoints;
 
@@ -615,7 +652,7 @@ function preprocessPoints(rawPoints){
     return {...p, speed: Math.hypot(dx, dy) / dt};
   });
 
-  // 2) Moving-average smooth (window=3) to remove touchpad jitter
+  // 2) Light moving-average (window=3) to clean any residual jitter
   const smoothed = [];
   const W = 1;
   for(let i = 0; i < pts.length; i++){
@@ -629,9 +666,7 @@ function preprocessPoints(rawPoints){
   }
   smoothed[0] = {...pts[0]};
   smoothed[smoothed.length-1] = {...pts[pts.length-1]};
-
-  // 3) Catmull-Rom spline: add smooth intermediate points for touchpad
-  return interpolateSpline(smoothed);
+  return smoothed;
 }
 
 // Compute stroke width at a single point
@@ -1689,48 +1724,37 @@ function onMove(e){
   if(!isDrawing) return;
 
   if(tool==='pen'||tool==='eraser'){
-    const usePF = tool==='pen' && penStyle === 'calligraphy' && window.__getStroke;
-    if(usePF){
-      // Smart point pushing for perfect-freehand calligraphy
-      if(currentPath.length === 0){
-        currentPath.push(p);
+    // Smart point pushing for beautiful smooth writing (all pens)
+    // - zoom-aware smoothing (jitter filter)
+    // - outlier jump detection
+    // - sub-pixel step interpolation for ultra-smooth curves
+    if(currentPath.length === 0){
+      currentPath.push(p);
+    } else {
+      const last = currentPath[currentPath.length - 1];
+      const zoomSmooth = zoom > 1 ? Math.min(0.58, 0.25 + (zoom - 1) * 0.08) : 0.28;
+      const fx = last.x * zoomSmooth + p.x * (1 - zoomSmooth);
+      const fy = last.y * zoomSmooth + p.y * (1 - zoomSmooth);
+      const fp = (last.pressure||0.5) * 0.45 + (p.pressure||0.5) * 0.55;
+      const dx = fx - last.x, dy = fy - last.y;
+      const dist = Math.hypot(dx, dy);
+      if(dist < 0.3) return; // ignore micro-jitter
+      const maxJump = 64 / zoom;
+      if(dist > maxJump){
+        currentPath.push({x:fx, y:fy, pressure:fp, time:p.time});
       } else {
-        const last = currentPath[currentPath.length - 1];
-        const zoomSmooth = zoom > 1 ? Math.min(0.58, 0.25 + (zoom - 1) * 0.08) : 0.25;
-        const fx = last.x * zoomSmooth + p.x * (1 - zoomSmooth);
-        const fy = last.y * zoomSmooth + p.y * (1 - zoomSmooth);
-        const fp = (last.pressure||0.5) * 0.45 + (p.pressure||0.5) * 0.55;
-        const dx = fx - last.x, dy = fy - last.y;
-        const dist = Math.hypot(dx, dy);
-        const maxJump = 64 / zoom;
-        if(dist > maxJump){
-          currentPath.push({x:fx, y:fy, pressure:fp, time:p.time});
-        } else {
-          const maxStep = Math.max(0.5, 2.2 / zoom);
-          const steps = Math.max(1, Math.ceil(dist / maxStep));
-          for(let i = 1; i <= steps; i++){
-            const t = i / steps;
-            currentPath.push({
-              x: last.x + dx * t,
-              y: last.y + dy * t,
-              pressure: (last.pressure||0.5) + (fp - (last.pressure||0.5)) * t,
-              time: p.time
-            });
-          }
+        const maxStep = Math.max(0.5, 2.0 / zoom);
+        const steps = Math.max(1, Math.ceil(dist / maxStep));
+        for(let i = 1; i <= steps; i++){
+          const t = i / steps;
+          currentPath.push({
+            x: last.x + dx * t,
+            y: last.y + dy * t,
+            pressure: (last.pressure||0.5) + (fp - (last.pressure||0.5)) * t,
+            time: p.time
+          });
         }
       }
-    } else {
-      // Adaptive streamline: optimized for touchpad writing (other pens)
-      if(currentPath.length > 0){
-        const last = currentPath[currentPath.length - 1];
-        const dist = Math.hypot(p.x - last.x, p.y - last.y);
-        if(dist < 0.8) return;
-        const velocity = dist / Math.max(1, p.time - (last.time||0));
-        const S = 0.3 + Math.min(0.35, velocity * 0.4);
-        p.x = last.x + (p.x - last.x) * S;
-        p.y = last.y + (p.y - last.y) * S;
-      }
-      currentPath.push(p);
     }
     // Fast draw: blit cached strokes + only render current stroke (big perf win)
     redrawFast({
@@ -1989,6 +2013,37 @@ async function loadPDF(file){
   redoStack = [];
   redrawAll();
 }
+
+// ── Sync UI to loaded settings ──
+function syncUIFromSettings(){
+  // Color
+  document.getElementById('customColor').value = color;
+  document.querySelectorAll('.color-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.color === color);
+  });
+  // Size
+  sizeSlider.value = lineWidth;
+  // Pen style
+  document.querySelectorAll('.pen-opt').forEach(b => {
+    b.classList.toggle('active', b.dataset.pen === penStyle);
+  });
+  // Background
+  const bgPicker = document.getElementById('bgColorPicker');
+  if(bgPicker) bgPicker.value = bgColor;
+  document.querySelectorAll('.bg-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.bg === bgColor);
+  });
+  // Grid
+  const gt = document.getElementById('gridToggle');
+  if(gt) gt.classList.toggle('on', showGrid);
+  const gc = document.getElementById('gridColorPicker');
+  if(gc) gc.value = gridColor;
+  const gs = document.getElementById('gridStyle');
+  if(gs) gs.value = gridStyle;
+  const gz = document.getElementById('gridSizeSlider');
+  if(gz) gz.value = gridSize;
+}
+syncUIFromSettings();
 
 // ── Keyboard shortcuts ──
 document.addEventListener('keydown', e => {
