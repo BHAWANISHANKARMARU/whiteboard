@@ -807,18 +807,6 @@ function drawPath(c, obj){
       right.push({x: calPts[i].x - nx, y: calPts[i].y - ny});
     }
 
-    // Backbone: fill circles to eliminate white gaps
-    c.fillStyle = obj.color;
-    for(let i=0;i<N;i++){
-      const lx=left[i].x-calPts[i].x, ly=left[i].y-calPts[i].y;
-      const r = Math.hypot(lx,ly);
-      if(r > 0.05){
-        c.beginPath();
-        c.arc(calPts[i].x, calPts[i].y, r, 0, Math.PI*2);
-        c.fill();
-      }
-    }
-
     // Draw filled shape with smooth bezier outline
     c.beginPath();
     c.fillStyle = obj.color;
@@ -916,19 +904,7 @@ function drawPath(c, obj){
       right.push({x:bPts[i].x-nx, y:bPts[i].y-ny});
     }
 
-    // Backbone: fill circles to eliminate white gaps
-    c.fillStyle = obj.color;
-    for(let i=0;i<N;i++){
-      const lx=left[i].x-bPts[i].x, ly=left[i].y-bPts[i].y;
-      const r = Math.hypot(lx,ly);
-      if(r > 0.05){
-        c.beginPath();
-        c.arc(bPts[i].x, bPts[i].y, r, 0, Math.PI*2);
-        c.fill();
-      }
-    }
-
-    // Shaped polygon on top for clean edges
+    // Shaped polygon for clean edges
     c.beginPath(); c.fillStyle = obj.color;
     c.moveTo(bPts[0].x, bPts[0].y);
     for(let i=0;i<left.length;i++){
@@ -998,16 +974,6 @@ function drawPath(c, obj){
       right.push({x:fPts[i].x-nx, y:fPts[i].y-ny});
     }
 
-    // Backbone: fill circles to eliminate white gaps
-    c.fillStyle = obj.color;
-    for(let i=0;i<N;i++){
-      const lx=left[i].x-fPts[i].x, ly=left[i].y-fPts[i].y;
-      const r = Math.hypot(lx,ly);
-      if(r > 0.05){
-        c.beginPath(); c.arc(fPts[i].x, fPts[i].y, r, 0, Math.PI*2); c.fill();
-      }
-    }
-
     c.beginPath(); c.fillStyle = obj.color;
     c.moveTo(fPts[0].x, fPts[0].y);
     for(let i=0;i<left.length;i++){
@@ -1074,16 +1040,6 @@ function drawPath(c, obj){
       const nx = -Math.sin(angle)*w, ny = Math.cos(angle)*w;
       left.push({x:iPts[i].x+nx, y:iPts[i].y+ny});
       right.push({x:iPts[i].x-nx, y:iPts[i].y-ny});
-    }
-
-    // Backbone: fill circles to eliminate white gaps
-    c.fillStyle = obj.color;
-    for(let i=0;i<N;i++){
-      const lx=left[i].x-iPts[i].x, ly=left[i].y-iPts[i].y;
-      const r = Math.hypot(lx,ly);
-      if(r > 0.05){
-        c.beginPath(); c.arc(iPts[i].x, iPts[i].y, r, 0, Math.PI*2); c.fill();
-      }
     }
 
     c.beginPath(); c.fillStyle = obj.color;
@@ -1156,16 +1112,6 @@ function drawPath(c, obj){
       const nx = -Math.sin(angle)*w, ny = Math.cos(angle)*w;
       left.push({x:ribbonPts[i].x+nx, y:ribbonPts[i].y+ny});
       right.push({x:ribbonPts[i].x-nx, y:ribbonPts[i].y-ny});
-    }
-
-    // Backbone: fill circles to eliminate white gaps
-    c.fillStyle = obj.color;
-    for(let i=0;i<N;i++){
-      const lx=left[i].x-ribbonPts[i].x, ly=left[i].y-ribbonPts[i].y;
-      const r = Math.hypot(lx,ly);
-      if(r > 0.05){
-        c.beginPath(); c.arc(ribbonPts[i].x, ribbonPts[i].y, r, 0, Math.PI*2); c.fill();
-      }
     }
 
     // Draw with extra-smooth bezier outline
