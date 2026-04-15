@@ -1,0 +1,2031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whiteboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Virgil:wght@400&family=Cascadia+Code&family=Caveat:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+@font-face {
+  font-family: 'Virgil';
+  src: url('https://excalidraw.com/Virgil.woff2') format('woff2');
+  font-display: swap;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+
+/* ── Canvas ── */
+#canvasWrap{
+  position:fixed;top:0;left:0;right:0;bottom:0;
+  background:#fff;overflow:hidden;cursor:crosshair;touch-action:none;
+}
+canvas{display:block;position:absolute;top:0;left:0;}
+
+/* ── Text Input ── */
+#textInput{
+  position:absolute;display:none;min-width:60px;min-height:28px;
+  border:2px solid #1c7ed6;border-radius:4px;background:transparent;outline:none;
+  font-size:20px;padding:4px 8px;z-index:50;resize:none;overflow:hidden;
+  font-family:'Caveat','Virgil',cursive;color:#1e1e1e;line-height:1.4;
+}
+
+/* ── Unified Bottom Toolbar ── */
+#bottomToolbar{
+  position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:3px;padding:5px 10px;
+  background:#fff;border-radius:14px;
+  box-shadow:0 2px 8px rgba(0,0,0,.1), 0 0 0 1px rgba(0,0,0,.06);
+  z-index:100;user-select:none;
+  transition:transform .3s cubic-bezier(.4,0,.2,1), opacity .3s ease;
+}
+#bottomToolbar.hidden{
+  transform:translateX(-50%) translateY(calc(100% + 20px));
+  opacity:0;pointer-events:none;
+}
+
+.sep{width:1px;height:28px;background:#e8e8e8;margin:0 3px;flex-shrink:0;}
+
+.tool-btn{
+  width:34px;height:34px;border:none;border-radius:8px;
+  background:transparent;color:#495057;cursor:pointer;display:flex;
+  align-items:center;justify-content:center;transition:.12s;position:relative;flex-shrink:0;
+}
+.tool-btn:hover{background:#f1f3f5;}
+.tool-btn.active{background:#e7f5ff;color:#1c7ed6;}
+.tool-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+
+/* Color swatches inline */
+.color-swatch{
+  width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid transparent;
+  transition:.12s;flex-shrink:0;
+}
+.color-swatch:hover{transform:scale(1.15);}
+.color-swatch.active{border-color:#1c7ed6;box-shadow:0 0 0 2px #e7f5ff;}
+#customColor{width:22px;height:22px;border:2px solid #dee2e6;border-radius:50%;cursor:pointer;padding:0;overflow:hidden;background:none;flex-shrink:0;}
+#customColor::-webkit-color-swatch-wrapper{padding:0;}
+#customColor::-webkit-color-swatch{border:none;border-radius:50%;}
+
+/* Size slider inline */
+#sizeSlider{width:60px;accent-color:#1c7ed6;margin:0;flex-shrink:0;}
+
+/* Zoom inline */
+#zoomLevel{font-size:10px;color:#868e96;min-width:32px;text-align:center;font-weight:600;flex-shrink:0;}
+.zoom-btn{
+  width:26px;height:26px;border:none;border-radius:6px;background:transparent;
+  color:#495057;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.zoom-btn:hover{background:#f1f3f5;}
+.zoom-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+
+/* ── Pen Sub-Panel (pops above toolbar) ── */
+#penPanel{
+  position:fixed;bottom:70px;left:50%;transform:translateX(-50%);
+  display:none;background:#fff;border-radius:10px;padding:6px 10px;
+  box-shadow:0 2px 8px rgba(0,0,0,.1), 0 0 0 1px rgba(0,0,0,.06);
+  z-index:101;gap:6px;align-items:center;
+}
+#penPanel.show{display:flex;}
+.pen-opt{
+  padding:4px 12px;border-radius:6px;border:1.5px solid transparent;
+  background:#f8f9fa;color:#495057;cursor:pointer;font-size:11px;font-weight:500;transition:.12s;
+}
+.pen-opt:hover{background:#e9ecef;}
+.pen-opt.active{border-color:#1c7ed6;color:#1c7ed6;background:#e7f5ff;}
+
+/* ── Toggle button (always visible) ── */
+#toggleToolbar{
+  position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
+  width:40px;height:24px;border:none;border-radius:12px;
+  background:#fff;color:#868e96;cursor:pointer;display:none;
+  align-items:center;justify-content:center;z-index:99;
+  box-shadow:0 2px 8px rgba(0,0,0,.1), 0 0 0 1px rgba(0,0,0,.06);
+  transition:.15s;
+}
+#toggleToolbar:hover{background:#f1f3f5;color:#495057;}
+#toggleToolbar.show{display:flex;}
+#toggleToolbar svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+
+/* ── Background Settings Panel ── */
+#bgPanel{
+  position:fixed;bottom:70px;left:50%;transform:translateX(-50%);
+  display:none;background:#fff;border-radius:12px;padding:14px 18px;
+  box-shadow:0 2px 12px rgba(0,0,0,.12), 0 0 0 1px rgba(0,0,0,.06);
+  z-index:101;min-width:240px;
+}
+#bgPanel.show{display:block;}
+.bg-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.bg-row:last-child{margin-bottom:0;}
+.bg-row label{font-size:12px;color:#495057;font-weight:500;}
+.bg-row input[type="color"]{
+  width:28px;height:28px;border:2px solid #dee2e6;border-radius:50%;
+  cursor:pointer;padding:0;overflow:hidden;background:none;
+}
+.bg-row input[type="color"]::-webkit-color-swatch-wrapper{padding:0;}
+.bg-row input[type="color"]::-webkit-color-swatch{border:none;border-radius:50%;}
+.bg-swatches{display:flex;gap:5px;flex-wrap:wrap;}
+.bg-swatch{
+  width:24px;height:24px;border-radius:6px;cursor:pointer;
+  border:2px solid transparent;transition:.12s;
+}
+.bg-swatch:hover{transform:scale(1.12);}
+.bg-swatch.active{border-color:#1c7ed6;}
+.toggle-switch{
+  position:relative;width:36px;height:20px;background:#dee2e6;border-radius:10px;
+  cursor:pointer;transition:.2s;border:none;padding:0;
+}
+.toggle-switch.on{background:#1c7ed6;}
+.toggle-switch::after{
+  content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;
+  background:#fff;border-radius:50%;transition:.2s;
+}
+.toggle-switch.on::after{left:18px;}
+.bg-row select{
+  padding:3px 8px;border:1px solid #dee2e6;border-radius:6px;
+  font-size:11px;color:#495057;background:#fff;cursor:pointer;outline:none;
+}
+.bg-row select:focus{border-color:#1c7ed6;}
+</style>
+</head>
+<body>
+
+<!-- ═══ Canvas ═══ -->
+<div id="canvasWrap">
+  <canvas id="mainCanvas"></canvas>
+  <canvas id="selectionCanvas"></canvas>
+  <textarea id="textInput"></textarea>
+</div>
+
+<!-- ═══ Pen sub-panel (pops above toolbar) ═══ -->
+<div id="penPanel">
+  <button class="pen-opt active" data-pen="thin">Fine</button>
+  <button class="pen-opt" data-pen="medium">Medium</button>
+  <button class="pen-opt" data-pen="calligraphy">Calligraphy</button>
+  <button class="pen-opt" data-pen="brush">Brush</button>
+  <button class="pen-opt" data-pen="marker">Marker</button>
+  <button class="pen-opt" data-pen="fountain">Fountain</button>
+  <button class="pen-opt" data-pen="ink">Ink</button>
+  <button class="pen-opt" data-pen="ribbon">Ribbon</button>
+</div>
+
+<!-- ═══ Single Unified Bottom Toolbar ═══ -->
+<div id="bottomToolbar">
+  <!-- Tools -->
+  <button class="tool-btn" data-tool="select" title="Select (Ctrl+Shift+Q)">
+    <svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-3 6z" fill="currentColor" stroke="none"/></svg>
+  </button>
+  <button class="tool-btn active" data-tool="pen" id="penBtn" title="Pen (Ctrl+Q)">
+    <svg viewBox="0 0 24 24"><path d="M17 3a2.83 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
+  </button>
+  <button class="tool-btn" data-tool="eraser" title="Eraser (Ctrl+E)">
+    <svg viewBox="0 0 24 24"><path d="M20 20H7L3 16l9-9 8 8-4 4z"/><path d="M6.5 13.5l8-8"/></svg>
+  </button>
+  <div class="sep"></div>
+  <button class="tool-btn" data-tool="rect" title="Rectangle (R)">
+    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+  </button>
+  <button class="tool-btn" data-tool="diamond" title="Diamond (D)">
+    <svg viewBox="0 0 24 24"><path d="M12 2l10 10-10 10L2 12z"/></svg>
+  </button>
+  <button class="tool-btn" data-tool="circle" title="Ellipse (O)">
+    <svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="10" ry="8"/></svg>
+  </button>
+  <button class="tool-btn" data-tool="arrow" title="Arrow (A)">
+    <svg viewBox="0 0 24 24"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="12 5 19 5 19 12"/></svg>
+  </button>
+  <button class="tool-btn" data-tool="line" title="Line (L)">
+    <svg viewBox="0 0 24 24"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+  </button>
+  <button class="tool-btn" data-tool="text" title="Text (T)">
+    <svg viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9.5" y1="20" x2="14.5" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+  </button>
+
+  <div class="sep"></div>
+
+  <!-- Colors -->
+  <div class="color-swatch active" data-color="#1e1e1e" style="background:#1e1e1e"></div>
+  <div class="color-swatch" data-color="#e03131" style="background:#e03131"></div>
+  <div class="color-swatch" data-color="#1c7ed6" style="background:#1c7ed6"></div>
+  <div class="color-swatch" data-color="#2f9e44" style="background:#2f9e44"></div>
+  <div class="color-swatch" data-color="#f08c00" style="background:#f08c00"></div>
+  <div class="color-swatch" data-color="#7048e8" style="background:#7048e8"></div>
+  <input type="color" id="customColor" value="#1e1e1e" title="Custom color">
+
+  <div class="sep"></div>
+
+  <!-- Size -->
+  <input type="range" id="sizeSlider" min="1" max="20" value="2">
+
+  <div class="sep"></div>
+
+  <!-- Undo / Redo / Clear / Save -->
+  <button class="tool-btn" id="undoBtn" title="Undo (Ctrl+Z)">
+    <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 105.64-8.36L1 10"/></svg>
+  </button>
+  <button class="tool-btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)">
+    <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-5.64-8.36L23 10"/></svg>
+  </button>
+  <button class="tool-btn" id="clearBtn" title="Clear canvas">
+    <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+  </button>
+  <button class="tool-btn" id="saveBtn" title="Export PNG">
+    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+  </button>
+  <button class="tool-btn" id="uploadBtn" title="Upload Image/PDF">
+    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+  </button>
+  <input type="file" id="fileInput" accept="image/*,.pdf" multiple style="display:none">
+
+  <div class="sep"></div>
+
+  <!-- Zoom -->
+  <button class="zoom-btn" id="zoomOut" title="Zoom out">
+    <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  </button>
+  <span id="zoomLevel">100%</span>
+  <button class="zoom-btn" id="zoomIn" title="Zoom in">
+    <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  </button>
+  <button class="zoom-btn" id="zoomFit" title="Reset zoom">
+    <svg viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+  </button>
+
+  <div class="sep"></div>
+
+  <!-- Background settings -->
+  <button class="tool-btn" id="bgBtn" title="Background settings">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+  </button>
+
+  <!-- Hide toolbar button -->
+  <button class="tool-btn" id="hideBtn" title="Hide toolbar (Tab)">
+    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+  </button>
+</div>
+
+<!-- ═══ Background Settings Panel ═══ -->
+<div id="bgPanel">
+  <div class="bg-row">
+    <label>Background</label>
+    <input type="color" id="bgColorPicker" value="#ffffff" title="Background color">
+  </div>
+  <div class="bg-row">
+    <label>Presets</label>
+    <div class="bg-swatches">
+      <div class="bg-swatch active" data-bg="#ffffff" style="background:#ffffff;border-color:#ddd"></div>
+      <div class="bg-swatch" data-bg="#f8f9fa" style="background:#f8f9fa"></div>
+      <div class="bg-swatch" data-bg="#fff9db" style="background:#fff9db"></div>
+      <div class="bg-swatch" data-bg="#f3f0ff" style="background:#f3f0ff"></div>
+      <div class="bg-swatch" data-bg="#e3fafc" style="background:#e3fafc"></div>
+      <div class="bg-swatch" data-bg="#ebfbee" style="background:#ebfbee"></div>
+      <div class="bg-swatch" data-bg="#1e1e2e" style="background:#1e1e2e"></div>
+      <div class="bg-swatch" data-bg="#2b2b2b" style="background:#2b2b2b"></div>
+      <div class="bg-swatch" data-bg="#1a1b26" style="background:#1a1b26"></div>
+    </div>
+  </div>
+  <div class="bg-row">
+    <label>Show grid</label>
+    <button class="toggle-switch on" id="gridToggle"></button>
+  </div>
+  <div class="bg-row">
+    <label>Grid color</label>
+    <input type="color" id="gridColorPicker" value="#000000" title="Grid color">
+  </div>
+  <div class="bg-row">
+    <label>Grid style</label>
+    <select id="gridStyle">
+      <option value="dots" selected>Dots</option>
+      <option value="lines">Lines</option>
+      <option value="cross">Crosshatch</option>
+    </select>
+  </div>
+  <div class="bg-row">
+    <label>Grid size</label>
+    <input type="range" id="gridSizeSlider" min="10" max="60" value="20" style="width:90px;accent-color:#1c7ed6;">
+  </div>
+</div>
+
+<!-- ═══ Show toolbar button (visible when hidden) ═══ -->
+<button id="toggleToolbar" title="Show toolbar (Tab)">
+  <svg viewBox="0 0 24 24"><polyline points="6 15 12 9 18 15"/></svg>
+</button>
+
+<script type="module">
+// Load perfect-freehand for silky-smooth calligraphy
+import { getStroke } from 'https://esm.sh/perfect-freehand@1.2.2';
+window.__getStroke = getStroke;
+window.dispatchEvent(new Event('pfReady'));
+</script>
+
+<script>
+/* ═══════════════════════════════════════════════════
+   WHITEBOARD – Excalidraw-quality, Vanilla JS
+   ═══════════════════════════════════════════════════ */
+
+// ── Canvas setup with HiDPI (retina) support ──
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+const selCanvas = document.getElementById('selectionCanvas');
+const selCtx = selCanvas.getContext('2d');
+const wrap = document.getElementById('canvasWrap');
+const textInput = document.getElementById('textInput');
+const dpr = window.devicePixelRatio || 1;
+
+// Offscreen cache canvas — holds committed strokes; drastically speeds up in-progress drawing
+const cacheCanvas = document.createElement('canvas');
+const cacheCtx = cacheCanvas.getContext('2d', { alpha: false });
+let cacheDirty = true;
+
+// High-quality image smoothing for crisp pen rendering
+ctx.imageSmoothingEnabled = true;
+ctx.imageSmoothingQuality = 'high';
+cacheCtx.imageSmoothingEnabled = true;
+cacheCtx.imageSmoothingQuality = 'high';
+
+// rAF throttle for ultra-smooth drawing
+let rafPending = false;
+function scheduleRedraw(){
+  if(rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(() => {
+    rafPending = false;
+    _doRedraw();
+  });
+}
+
+// ── State ──
+let tool = 'pen';
+let penStyle = 'thin';
+let color = '#1e1e1e';
+let lineWidth = 2;
+let zoom = 1;
+let panX = 0, panY = 0;
+let isPanning = false, panStart = {x:0,y:0};
+let strokes = [], redoStack = [];
+let isDrawing = false, currentPath = [], shapeStart = null;
+let selectedIdx = -1, isDraggingSel = false, dragOff = {x:0,y:0};
+
+// Background settings
+let bgColor = '#ffffff';
+let showGrid = true;
+let gridColor = '#000000';
+let gridOpacity = 0.07;
+let gridStyle = 'dots';  // dots | lines | cross
+let gridSize = 20;
+
+// ── HiDPI Resize ──
+function resize(){
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  canvas.width = w * dpr;  canvas.height = h * dpr;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  selCanvas.width = w * dpr; selCanvas.height = h * dpr;
+  selCanvas.style.width = w + 'px'; selCanvas.style.height = h + 'px';
+  cacheCanvas.width = w * dpr; cacheCanvas.height = h * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  selCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cacheCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingQuality = 'high';
+  cacheCtx.imageSmoothingQuality = 'high';
+  cacheDirty = true;
+  redrawAll();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── Pen Profiles ──
+const penProfiles = {
+  // Existing 3
+  thin:        { widthMul: 0.45, speedSens: 0.7, minW: 0.1, maxW: 1.6, taper: true, taperLen: 8,  taperTip: 0.05, mode:'outline' },
+  medium:      { widthMul: 0.9,  speedSens: 0.6, minW: 0.2, maxW: 3.0, taper: true, taperLen: 10, taperTip: 0.08, mode:'outline' },
+  calligraphy: { widthMul: 2.35, mode:'perfectFreehand', thinning: 0.58, smoothing: 0.76, streamline: 0.38, simulatePressure: true, taperStart: 24, taperEnd: 24 },
+
+  // New: Brush — very thick bold swoops, dramatic thick-thin, direction-sensitive
+  brush:       { widthMul: 6.0, speedSens: 0.6, minW: 0.08, maxW: 22, taper: true, taperLen: 25, taperTip: 0.003, mode:'directionBrush', dirSens: 0.85 },
+
+  // New: Marker — consistent thick line, slight pressure variation, rounded feel
+  marker:      { widthMul: 3.5, speedSens: 0.15, minW: 1.0, maxW: 10, taper: false, mode:'markerStroke', opacity: 0.85 },
+
+  // New: Fountain — elegant thick-thin like a fountain pen nib, medium contrast
+  fountain:    { widthMul: 2.5, speedSens: 0.45, minW: 0.15, maxW: 8, taper: true, taperLen: 14, taperTip: 0.02, mode:'fountainNib', nibAngle: Math.PI * 0.3 },
+
+  // New: Ink — splashy, very dramatic speed variation, hairline fast / bold slow
+  ink:         { widthMul: 5.0, speedSens: 0.5, minW: 0.4, maxW: 16, taper: true, taperLen: 12, taperTip: 0.008, mode:'inkBrush' },
+
+  // New: Ribbon — very thick bold S-curves, curvature-boosted, smooth silk-like edges
+  ribbon:      { widthMul: 7.5, speedSens: 0.3, minW: 0.2, maxW: 28, taper: true, taperLen: 30, taperTip: 0.01, mode:'ribbonStroke' },
+};
+
+// ── Tool Buttons ──
+document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    tool = btn.dataset.tool;
+    document.getElementById('penPanel').classList.toggle('show', tool === 'pen');
+    wrap.style.cursor = tool === 'select' ? 'default' : tool === 'text' ? 'text' : 'crosshair';
+    commitText();
+  });
+});
+
+// ── Hide / Show toolbar ──
+const bottomToolbar = document.getElementById('bottomToolbar');
+const toggleBtn = document.getElementById('toggleToolbar');
+const hideBtn = document.getElementById('hideBtn');
+
+function hideToolbar(){
+  bottomToolbar.classList.add('hidden');
+  document.getElementById('penPanel').classList.remove('show');
+  toggleBtn.classList.add('show');
+}
+function showToolbar(){
+  bottomToolbar.classList.remove('hidden');
+  toggleBtn.classList.remove('show');
+}
+hideBtn.addEventListener('click', hideToolbar);
+toggleBtn.addEventListener('click', showToolbar);
+
+// ── Background Settings Panel ──
+const bgPanel = document.getElementById('bgPanel');
+document.getElementById('bgBtn').addEventListener('click', () => {
+  bgPanel.classList.toggle('show');
+  document.getElementById('penPanel').classList.remove('show');
+});
+
+// Close bg panel when clicking elsewhere
+document.addEventListener('pointerdown', e => {
+  if(bgPanel.classList.contains('show') && !bgPanel.contains(e.target) && e.target.id !== 'bgBtn'){
+    bgPanel.classList.remove('show');
+  }
+});
+
+// Background color picker
+document.getElementById('bgColorPicker').addEventListener('input', e => {
+  bgColor = e.target.value;
+  document.querySelectorAll('.bg-swatch').forEach(s => s.classList.remove('active'));
+  redrawAll();
+});
+
+// Background color presets
+document.querySelectorAll('.bg-swatch').forEach(sw => {
+  sw.addEventListener('click', () => {
+    bgColor = sw.dataset.bg;
+    document.getElementById('bgColorPicker').value = bgColor;
+    document.querySelectorAll('.bg-swatch').forEach(s => s.classList.remove('active'));
+    sw.classList.add('active');
+    // Auto-adjust grid opacity for dark backgrounds
+    const r = parseInt(bgColor.slice(1,3),16), g = parseInt(bgColor.slice(3,5),16), b = parseInt(bgColor.slice(5,7),16);
+    const lum = (r*299 + g*587 + b*114) / 1000;
+    gridOpacity = lum < 80 ? 0.15 : 0.07;
+    redrawAll();
+  });
+});
+
+// Grid toggle
+const gridToggleBtn = document.getElementById('gridToggle');
+gridToggleBtn.addEventListener('click', () => {
+  showGrid = !showGrid;
+  gridToggleBtn.classList.toggle('on', showGrid);
+  redrawAll();
+});
+
+// Grid color
+document.getElementById('gridColorPicker').addEventListener('input', e => {
+  gridColor = e.target.value;
+  redrawAll();
+});
+
+// Grid style
+document.getElementById('gridStyle').addEventListener('change', e => {
+  gridStyle = e.target.value;
+  redrawAll();
+});
+
+// Grid size
+document.getElementById('gridSizeSlider').addEventListener('input', e => {
+  gridSize = +e.target.value;
+  redrawAll();
+});
+
+// Pen options
+document.querySelectorAll('.pen-opt').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.pen-opt').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    penStyle = btn.dataset.pen;
+  });
+});
+
+// Colors
+document.querySelectorAll('.color-swatch').forEach(sw => {
+  sw.addEventListener('click', () => {
+    document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+    sw.classList.add('active');
+    color = sw.dataset.color;
+    document.getElementById('customColor').value = color;
+  });
+});
+document.getElementById('customColor').addEventListener('input', e => {
+  color = e.target.value;
+  document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+});
+
+// Size
+const sizeSlider = document.getElementById('sizeSlider');
+sizeSlider.addEventListener('input', () => { lineWidth = +sizeSlider.value; });
+
+// ── Coordinate helper ──
+function canvasCoord(e){
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - r.left - panX) / zoom,
+    y: (e.clientY - r.top - panY) / zoom,
+    pressure: (e.pressure !== undefined && e.pressure > 0) ? e.pressure : 0.5,
+    time: performance.now()
+  };
+}
+
+// ══════════════════════════════════════
+//  POINT SMOOTHING & INTERPOLATION
+// ══════════════════════════════════════
+
+// Chaikin's corner cutting for ultra-smooth curves (2 iterations)
+function smoothPoints(pts, iterations){
+  if(pts.length < 3) return pts;
+  let result = pts;
+  for(let iter = 0; iter < iterations; iter++){
+    const next = [result[0]];
+    for(let i = 0; i < result.length - 1; i++){
+      const p0 = result[i], p1 = result[i+1];
+      next.push({
+        x: p0.x * 0.75 + p1.x * 0.25,
+        y: p0.y * 0.75 + p1.y * 0.25,
+        pressure: (p0.pressure||0.5)*0.75 + (p1.pressure||0.5)*0.25,
+        speed: (p0.speed||0)*0.75 + (p1.speed||0)*0.25,
+        time: p0.time
+      });
+      next.push({
+        x: p0.x * 0.25 + p1.x * 0.75,
+        y: p0.y * 0.25 + p1.y * 0.75,
+        pressure: (p0.pressure||0.5)*0.25 + (p1.pressure||0.5)*0.75,
+        speed: (p0.speed||0)*0.25 + (p1.speed||0)*0.75,
+        time: p1.time
+      });
+    }
+    next.push(result[result.length - 1]);
+    result = next;
+  }
+  return result;
+}
+
+// Catmull-Rom spline interpolation — adds smooth points between sparse samples
+function interpolateSpline(pts){
+  if(pts.length < 3) return pts;
+  const result = [pts[0]];
+  for(let i = 0; i < pts.length - 1; i++){
+    const p0 = pts[Math.max(0, i-1)];
+    const p1 = pts[i];
+    const p2 = pts[Math.min(pts.length-1, i+1)];
+    const p3 = pts[Math.min(pts.length-1, i+2)];
+    // Insert 2 intermediate points per segment
+    for(let t = 0.33; t < 1; t += 0.34){
+      const t2 = t*t, t3 = t2*t;
+      const x = 0.5*((-p0.x+3*p1.x-3*p2.x+p3.x)*t3 + (2*p0.x-5*p1.x+4*p2.x-p3.x)*t2 + (-p0.x+p2.x)*t + 2*p1.x);
+      const y = 0.5*((-p0.y+3*p1.y-3*p2.y+p3.y)*t3 + (2*p0.y-5*p1.y+4*p2.y-p3.y)*t2 + (-p0.y+p2.y)*t + 2*p1.y);
+      const pr = p1.pressure + (p2.pressure - p1.pressure) * t;
+      const sp = p1.speed + (p2.speed - p1.speed) * t;
+      const tm = p1.time + (p2.time - p1.time) * t;
+      result.push({x, y, pressure: pr||0.5, speed: sp||0, time: tm});
+    }
+    if(i < pts.length - 2) result.push({...p2});
+  }
+  result.push(pts[pts.length-1]);
+  return result;
+}
+
+// Pre-process raw input: compute speed, smooth jitter, interpolate for touchpad
+function preprocessPoints(rawPoints){
+  if(rawPoints.length < 2) return rawPoints;
+
+  // 1) Compute speed at each point
+  const pts = rawPoints.map((p,i) => {
+    if(i === 0) return {...p, speed: 0};
+    const dx = p.x - rawPoints[i-1].x;
+    const dy = p.y - rawPoints[i-1].y;
+    const dt = Math.max(1, (p.time||0) - (rawPoints[i-1].time||0));
+    return {...p, speed: Math.hypot(dx, dy) / dt};
+  });
+
+  // 2) Moving-average smooth (window=3) to remove touchpad jitter
+  const smoothed = [];
+  const W = 1;
+  for(let i = 0; i < pts.length; i++){
+    let sx=0, sy=0, sp=0, ss=0, n=0;
+    for(let j = Math.max(0,i-W); j <= Math.min(pts.length-1,i+W); j++){
+      sx += pts[j].x; sy += pts[j].y;
+      sp += (pts[j].pressure||0.5); ss += (pts[j].speed||0);
+      n++;
+    }
+    smoothed.push({x:sx/n, y:sy/n, pressure:sp/n, speed:ss/n, time:pts[i].time});
+  }
+  smoothed[0] = {...pts[0]};
+  smoothed[smoothed.length-1] = {...pts[pts.length-1]};
+
+  // 3) Catmull-Rom spline: add smooth intermediate points for touchpad
+  return interpolateSpline(smoothed);
+}
+
+// Compute stroke width at a single point
+function widthAt(pt, baseW, profile){
+  let w = baseW * profile.widthMul;
+  const spd = Math.min(1, (pt.speed || 0) * 2.2);
+  const sf = 1 - spd * spd * profile.speedSens;
+  w *= Math.max(0.1, sf);
+  if(pt.pressure > 0 && pt.pressure < 1){
+    w *= 0.08 + 0.92 * pt.pressure;
+  }
+  return Math.max(profile.minW, Math.min(profile.maxW * baseW, w));
+}
+
+// ══════════════════════════════════════
+//  DRAWING ENGINE
+// ══════════════════════════════════════
+
+function drawObject(c, obj){
+  c.save();
+  c.translate(panX, panY);
+  c.scale(zoom, zoom);
+
+  if(obj.type === 'path') drawPath(c, obj);
+  else if(obj.type === 'rect') drawRect(c, obj);
+  else if(obj.type === 'diamond') drawDiamond(c, obj);
+  else if(obj.type === 'circle') drawEllipse(c, obj);
+  else if(obj.type === 'line' || obj.type === 'arrow') drawLine(c, obj);
+  else if(obj.type === 'text') drawText(c, obj);
+  else if(obj.type === 'image') drawImage(c, obj);
+
+  c.restore();
+}
+
+// ── Path (pen strokes) ──
+function drawPath(c, obj){
+  const raw = obj.points;
+  if(raw.length < 2) return;
+  const profile = penProfiles[obj.pen || 'medium'];
+
+  // Perfect-freehand path: uses raw input directly (library does its own smoothing)
+  if(profile.mode === 'perfectFreehand' && window.__getStroke){
+    const pfPoints = raw.map(p => [p.x, p.y, p.pressure || 0.5]);
+    const stroke = window.__getStroke(pfPoints, {
+      size: Math.max(1.1, obj.lineWidth * (profile.widthMul || 2.35)),
+      thinning: profile.thinning ?? 0.58,
+      smoothing: profile.smoothing ?? 0.76,
+      streamline: profile.streamline ?? 0.38,
+      simulatePressure: profile.simulatePressure ?? true,
+      easing: t => t,
+      start: { taper: profile.taperStart || 24, easing: t => t*t, cap: false },
+      end: { taper: profile.taperEnd || 24, easing: t => t*t, cap: false },
+      last: obj.last !== false
+    });
+    if(!stroke.length) return;
+    c.fillStyle = obj.color;
+    c.beginPath();
+    c.moveTo(stroke[0][0], stroke[0][1]);
+    for(let i = 0; i < stroke.length; i++){
+      const [x0,y0] = stroke[i];
+      const [x1,y1] = stroke[(i+1) % stroke.length];
+      c.quadraticCurveTo(x0, y0, (x0+x1)*0.5, (y0+y1)*0.5);
+    }
+    c.closePath();
+    c.fill();
+    return;
+  }
+
+  // Preprocess (speed + jitter + spline interpolation) then smooth
+  const processed = preprocessPoints(raw);
+  const pts = smoothPoints(processed, 2);
+
+  if(profile.mode === 'brushOutline'){
+    // ═══ CALLIGRAPHY BRUSH — thick bold strokes, sharp tips, direction+curvature sensitive ═══
+    // Extra smoothing pass for calligraphy
+    const calPts = smoothPoints(pts, 1);
+    const N = calPts.length;
+    if(N < 3){
+      c.beginPath(); c.fillStyle = obj.color;
+      c.arc(calPts[0].x, calPts[0].y, 0.5, 0, Math.PI*2); c.fill();
+      return;
+    }
+
+    const left = [], right = [];
+    const taperLen = Math.min(profile.taperLen || 26, N * 0.35);
+    const taperTip = profile.taperTip || 0.003;
+    const curvBoost = profile.curvBoost || 1.2;
+    const dirSens = profile.dirSens || 0.5;
+
+    // Pre-compute smoothed curvature
+    const curvArr = new Array(N).fill(0);
+    for(let i=2;i<N-2;i++){
+      const ax=calPts[i-2].x-calPts[i].x, ay=calPts[i-2].y-calPts[i].y;
+      const bx2=calPts[i+2].x-calPts[i].x, by2=calPts[i+2].y-calPts[i].y;
+      const cr=Math.abs(ax*by2-ay*bx2);
+      const mA=Math.hypot(ax,ay), mB=Math.hypot(bx2,by2);
+      if(mA>0.1&&mB>0.1) curvArr[i]=cr/(mA*mB);
+    }
+    // Smooth curvature
+    const sCurv = new Array(N).fill(0);
+    for(let i=0;i<N;i++){
+      let s=0,n=0;
+      for(let j=Math.max(0,i-4);j<=Math.min(N-1,i+4);j++){ s+=curvArr[j]; n++; }
+      sCurv[i]=s/n;
+    }
+
+    for(let i = 0; i < N; i++){
+      let w = widthAt(calPts[i], obj.lineWidth, profile) * 0.5;
+
+      // Curvature boost: curves = thicker
+      w *= 1 + sCurv[i] * curvBoost;
+
+      // Direction sensitivity: vertical thicker, horizontal thinner
+      let angle;
+      const back = Math.max(0, i - 4);
+      const fwd = Math.min(N - 1, i + 4);
+      angle = Math.atan2(calPts[fwd].y - calPts[back].y, calPts[fwd].x - calPts[back].x);
+      if(dirSens > 0){
+        const vertFactor = Math.abs(Math.sin(angle));
+        w *= (1 - dirSens) + dirSens * (0.15 + 0.85 * vertFactor);
+      }
+
+      // Sharp taper: needle-point tips
+      let taper = 1;
+      if(i < taperLen){
+        const t = i / taperLen;
+        taper = taperTip + (1 - taperTip) * t * t * t;
+      }
+      if(i > N - 1 - taperLen){
+        const t = (N - 1 - i) / taperLen;
+        taper = Math.min(taper, taperTip + (1 - taperTip) * t * t * t);
+      }
+      w *= taper;
+
+      const nx = -Math.sin(angle) * w;
+      const ny = Math.cos(angle) * w;
+      left.push({x: calPts[i].x + nx, y: calPts[i].y + ny});
+      right.push({x: calPts[i].x - nx, y: calPts[i].y - ny});
+    }
+
+    // Backbone: fill circles to eliminate white gaps
+    c.fillStyle = obj.color;
+    for(let i=0;i<N;i++){
+      const lx=left[i].x-calPts[i].x, ly=left[i].y-calPts[i].y;
+      const r = Math.hypot(lx,ly);
+      if(r > 0.05){
+        c.beginPath();
+        c.arc(calPts[i].x, calPts[i].y, r, 0, Math.PI*2);
+        c.fill();
+      }
+    }
+
+    // Draw filled shape with smooth bezier outline
+    c.beginPath();
+    c.fillStyle = obj.color;
+
+    // Start at the needle-sharp tip
+    c.moveTo(calPts[0].x, calPts[0].y);
+
+    // Left edge forward (smooth curves)
+    for(let i = 0; i < left.length; i++){
+      if(i === 0){ c.lineTo(left[0].x, left[0].y); }
+      else if(i < 3){
+        c.lineTo(left[i].x, left[i].y);
+      } else {
+        const xc = (left[i-1].x + left[i].x) * 0.5;
+        const yc = (left[i-1].y + left[i].y) * 0.5;
+        c.quadraticCurveTo(left[i-1].x, left[i-1].y, xc, yc);
+      }
+    }
+    c.lineTo(left[left.length-1].x, left[left.length-1].y);
+
+    // End needle-sharp tip
+    c.lineTo(calPts[N-1].x, calPts[N-1].y);
+
+    // Right edge backward (smooth curves)
+    for(let i = right.length-1; i >= 0; i--){
+      if(i === right.length-1){ c.lineTo(right[i].x, right[i].y); }
+      else if(i > right.length - 4){
+        c.lineTo(right[i].x, right[i].y);
+      } else {
+        const xc = (right[i+1].x + right[i].x) * 0.5;
+        const yc = (right[i+1].y + right[i].y) * 0.5;
+        c.quadraticCurveTo(right[i+1].x, right[i+1].y, xc, yc);
+      }
+    }
+    c.lineTo(right[0].x, right[0].y);
+    c.lineTo(calPts[0].x, calPts[0].y);
+    c.closePath();
+    c.fill();
+
+  } else if(profile.mode === 'directionBrush'){
+    // ═══ BRUSH — bold swoops, direction-sensitive thick/thin ═══
+    // Extra smoothing for smooth brush strokes
+    const bPts = smoothPoints(pts, 1);
+    const N = bPts.length;
+    if(N < 3){ c.beginPath();c.fillStyle=obj.color;c.arc(bPts[0].x,bPts[0].y,0.5,0,Math.PI*2);c.fill();return; }
+
+    const left = [], right = [];
+    const taperLen = Math.min(profile.taperLen||25, N*0.35);
+    const taperTip = profile.taperTip||0.003;
+    const dirSens = profile.dirSens||0.85;
+
+    // Pre-compute smoothed curvature
+    const curvArr = new Array(N).fill(0);
+    for(let i=2;i<N-2;i++){
+      const ax=bPts[i-2].x-bPts[i].x, ay=bPts[i-2].y-bPts[i].y;
+      const bx2=bPts[i+2].x-bPts[i].x, by2=bPts[i+2].y-bPts[i].y;
+      const cr=Math.abs(ax*by2-ay*bx2);
+      const mA=Math.hypot(ax,ay), mB=Math.hypot(bx2,by2);
+      if(mA>0.1&&mB>0.1) curvArr[i]=cr/(mA*mB);
+    }
+    const sCurv = new Array(N).fill(0);
+    for(let i=0;i<N;i++){
+      let s=0,n=0;
+      for(let j=Math.max(0,i-4);j<=Math.min(N-1,i+4);j++){ s+=curvArr[j]; n++; }
+      sCurv[i]=s/n;
+    }
+
+    for(let i = 0; i < N; i++){
+      let w = widthAt(bPts[i], obj.lineWidth, profile) * 0.5;
+
+      // Direction sensitivity: vertical strokes thick, horizontal thin
+      let angle;
+      const bk = Math.max(0,i-4), fw = Math.min(N-1,i+4);
+      angle = Math.atan2(bPts[fw].y-bPts[bk].y, bPts[fw].x-bPts[bk].x);
+      const vertFactor = Math.abs(Math.sin(angle));
+      w *= (1 - dirSens) + dirSens * (0.08 + 0.92 * vertFactor);
+
+      // Smooth curvature boost
+      w *= 1 + sCurv[i] * 0.6;
+
+      // Sharp taper
+      let taper = 1;
+      if(i < taperLen){
+        const t = i/taperLen;
+        taper = taperTip + (1-taperTip)*t*t*t;
+      }
+      if(i > N-1-taperLen){
+        const t = (N-1-i)/taperLen;
+        taper = Math.min(taper, taperTip + (1-taperTip)*t*t*t);
+      }
+      w *= taper;
+
+      const nx = -Math.sin(angle)*w, ny = Math.cos(angle)*w;
+      left.push({x:bPts[i].x+nx, y:bPts[i].y+ny});
+      right.push({x:bPts[i].x-nx, y:bPts[i].y-ny});
+    }
+
+    // Backbone: fill circles to eliminate white gaps
+    c.fillStyle = obj.color;
+    for(let i=0;i<N;i++){
+      const lx=left[i].x-bPts[i].x, ly=left[i].y-bPts[i].y;
+      const r = Math.hypot(lx,ly);
+      if(r > 0.05){
+        c.beginPath();
+        c.arc(bPts[i].x, bPts[i].y, r, 0, Math.PI*2);
+        c.fill();
+      }
+    }
+
+    // Shaped polygon on top for clean edges
+    c.beginPath(); c.fillStyle = obj.color;
+    c.moveTo(bPts[0].x, bPts[0].y);
+    for(let i=0;i<left.length;i++){
+      if(i<3) c.lineTo(left[i].x,left[i].y);
+      else { const xc=(left[i-1].x+left[i].x)*.5, yc=(left[i-1].y+left[i].y)*.5; c.quadraticCurveTo(left[i-1].x,left[i-1].y,xc,yc); }
+    }
+    c.lineTo(left[left.length-1].x,left[left.length-1].y);
+    c.lineTo(bPts[N-1].x,bPts[N-1].y);
+    for(let i=right.length-1;i>=0;i--){
+      if(i>right.length-4) c.lineTo(right[i].x,right[i].y);
+      else { const xc=(right[i+1].x+right[i].x)*.5, yc=(right[i+1].y+right[i].y)*.5; c.quadraticCurveTo(right[i+1].x,right[i+1].y,xc,yc); }
+    }
+    c.lineTo(right[0].x,right[0].y);
+    c.lineTo(bPts[0].x,bPts[0].y);
+    c.closePath(); c.fill();
+
+  } else if(profile.mode === 'markerStroke'){
+    // ═══ MARKER — consistent thick stroke with slight transparency ═══
+    const N = pts.length;
+    c.globalAlpha = profile.opacity || 0.85;
+    c.strokeStyle = obj.color;
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    c.lineWidth = obj.lineWidth * profile.widthMul;
+
+    c.beginPath();
+    c.moveTo(pts[0].x, pts[0].y);
+    for(let i = 1; i < N - 1; i++){
+      const xc = (pts[i].x + pts[i+1].x) * 0.5;
+      const yc = (pts[i].y + pts[i+1].y) * 0.5;
+      c.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
+    }
+    if(N > 1) c.lineTo(pts[N-1].x, pts[N-1].y);
+    c.stroke();
+    c.globalAlpha = 1;
+
+  } else if(profile.mode === 'fountainNib'){
+    // ═══ FOUNTAIN PEN — nib-angle based thick/thin like a real fountain pen ═══
+    // Extra smoothing for elegant fountain curves
+    const fPts = smoothPoints(pts, 1);
+    const N = fPts.length;
+    if(N < 3){ c.beginPath();c.fillStyle=obj.color;c.arc(fPts[0].x,fPts[0].y,0.5,0,Math.PI*2);c.fill();return; }
+
+    const nibAngle = profile.nibAngle || Math.PI * 0.3;
+    const left = [], right = [];
+    const taperLen = Math.min(profile.taperLen||14, N*0.3);
+    const taperTip = profile.taperTip||0.02;
+
+    for(let i = 0; i < N; i++){
+      let w = widthAt(fPts[i], obj.lineWidth, profile) * 0.5;
+
+      // Nib angle: width depends on angle between stroke direction and nib
+      let angle;
+      const bk=Math.max(0,i-3), fw=Math.min(N-1,i+3);
+      angle = Math.atan2(fPts[fw].y-fPts[bk].y, fPts[fw].x-fPts[bk].x);
+      const nibDiff = Math.abs(Math.sin(angle - nibAngle));
+      w *= 0.12 + 0.88 * nibDiff; // cross-nib = thin, along-nib = thick
+
+      // Taper
+      let taper = 1;
+      if(i < taperLen){ const t=i/taperLen; taper=taperTip+(1-taperTip)*t*t*(3-2*t); }
+      if(i > N-1-taperLen){ const t=(N-1-i)/taperLen; taper=Math.min(taper,taperTip+(1-taperTip)*t*t*(3-2*t)); }
+      w *= taper;
+
+      const nx = -Math.sin(angle)*w, ny = Math.cos(angle)*w;
+      left.push({x:fPts[i].x+nx, y:fPts[i].y+ny});
+      right.push({x:fPts[i].x-nx, y:fPts[i].y-ny});
+    }
+
+    // Backbone: fill circles to eliminate white gaps
+    c.fillStyle = obj.color;
+    for(let i=0;i<N;i++){
+      const lx=left[i].x-fPts[i].x, ly=left[i].y-fPts[i].y;
+      const r = Math.hypot(lx,ly);
+      if(r > 0.05){
+        c.beginPath(); c.arc(fPts[i].x, fPts[i].y, r, 0, Math.PI*2); c.fill();
+      }
+    }
+
+    c.beginPath(); c.fillStyle = obj.color;
+    c.moveTo(fPts[0].x, fPts[0].y);
+    for(let i=0;i<left.length;i++){
+      if(i<2) c.lineTo(left[i].x,left[i].y);
+      else { const xc=(left[i-1].x+left[i].x)*.5, yc=(left[i-1].y+left[i].y)*.5; c.quadraticCurveTo(left[i-1].x,left[i-1].y,xc,yc); }
+    }
+    c.lineTo(left[left.length-1].x,left[left.length-1].y);
+    c.lineTo(fPts[N-1].x,fPts[N-1].y);
+    for(let i=right.length-1;i>=0;i--){
+      if(i>right.length-3) c.lineTo(right[i].x,right[i].y);
+      else { const xc=(right[i+1].x+right[i].x)*.5, yc=(right[i+1].y+right[i].y)*.5; c.quadraticCurveTo(right[i+1].x,right[i+1].y,xc,yc); }
+    }
+    c.lineTo(right[0].x,right[0].y);
+    c.lineTo(fPts[0].x,fPts[0].y);
+    c.closePath(); c.fill();
+
+  } else if(profile.mode === 'inkBrush'){
+    // ═══ INK — dramatic speed variation, bold slow, thinner fast ═══
+    // Extra smoothing for smooth ink flow
+    const iPts = smoothPoints(pts, 1);
+    const N = iPts.length;
+    if(N < 3){ c.beginPath();c.fillStyle=obj.color;c.arc(iPts[0].x,iPts[0].y,0.5,0,Math.PI*2);c.fill();return; }
+
+    const left = [], right = [];
+    const taperLen = Math.min(profile.taperLen||12, N*0.3);
+    const taperTip = profile.taperTip||0.008;
+
+    // Smoothed curvature for gradual width changes
+    const curvArr = new Array(N).fill(0);
+    for(let i=2;i<N-2;i++){
+      const ax=iPts[i-2].x-iPts[i].x, ay=iPts[i-2].y-iPts[i].y;
+      const bx2=iPts[i+2].x-iPts[i].x, by2=iPts[i+2].y-iPts[i].y;
+      const cr=Math.abs(ax*by2-ay*bx2);
+      const mA=Math.hypot(ax,ay), mB=Math.hypot(bx2,by2);
+      if(mA>0.1&&mB>0.1) curvArr[i]=cr/(mA*mB);
+    }
+    const sCurv = new Array(N).fill(0);
+    for(let i=0;i<N;i++){
+      let s=0,n=0;
+      for(let j=Math.max(0,i-3);j<=Math.min(N-1,i+3);j++){ s+=curvArr[j]; n++; }
+      sCurv[i]=s/n;
+    }
+
+    for(let i = 0; i < N; i++){
+      let w = widthAt(iPts[i], obj.lineWidth, profile) * 0.5;
+
+      // Speed variation: thinner at speed but still readable
+      const spd = Math.min(1, (iPts[i].speed||0) * 2.0);
+      w *= Math.max(0.18, 1 - spd * spd * 0.7);
+
+      // Smooth curvature boost (curves = thicker)
+      w *= 1 + sCurv[i] * 0.8;
+
+      // Sharp taper
+      let taper = 1;
+      if(i < taperLen){ const t=i/taperLen; taper=taperTip+(1-taperTip)*t*t*t*t; }
+      if(i > N-1-taperLen){ const t=(N-1-i)/taperLen; taper=Math.min(taper,taperTip+(1-taperTip)*t*t*t*t); }
+      w *= taper;
+
+      let angle;
+      const bk=Math.max(0,i-4), fw=Math.min(N-1,i+4);
+      angle = Math.atan2(iPts[fw].y-iPts[bk].y, iPts[fw].x-iPts[bk].x);
+
+      const nx = -Math.sin(angle)*w, ny = Math.cos(angle)*w;
+      left.push({x:iPts[i].x+nx, y:iPts[i].y+ny});
+      right.push({x:iPts[i].x-nx, y:iPts[i].y-ny});
+    }
+
+    // Backbone: fill circles to eliminate white gaps
+    c.fillStyle = obj.color;
+    for(let i=0;i<N;i++){
+      const lx=left[i].x-iPts[i].x, ly=left[i].y-iPts[i].y;
+      const r = Math.hypot(lx,ly);
+      if(r > 0.05){
+        c.beginPath(); c.arc(iPts[i].x, iPts[i].y, r, 0, Math.PI*2); c.fill();
+      }
+    }
+
+    c.beginPath(); c.fillStyle = obj.color;
+    c.moveTo(iPts[0].x, iPts[0].y);
+    for(let i=0;i<left.length;i++){
+      if(i<2) c.lineTo(left[i].x,left[i].y);
+      else { const xc=(left[i-1].x+left[i].x)*.5, yc=(left[i-1].y+left[i].y)*.5; c.quadraticCurveTo(left[i-1].x,left[i-1].y,xc,yc); }
+    }
+    c.lineTo(left[left.length-1].x,left[left.length-1].y);
+    c.lineTo(iPts[N-1].x,iPts[N-1].y);
+    for(let i=right.length-1;i>=0;i--){
+      if(i>right.length-3) c.lineTo(right[i].x,right[i].y);
+      else { const xc=(right[i+1].x+right[i].x)*.5, yc=(right[i+1].y+right[i].y)*.5; c.quadraticCurveTo(right[i+1].x,right[i+1].y,xc,yc); }
+    }
+    c.lineTo(right[0].x,right[0].y);
+    c.lineTo(iPts[0].x,iPts[0].y);
+    c.closePath(); c.fill();
+
+  } else if(profile.mode === 'ribbonStroke'){
+    // ═══ RIBBON — bold thick S-curves, silk-like smooth edges ═══
+    // Extra smoothing for ultra-smooth ribbon edges
+    const ribbonPts = smoothPoints(pts, 2); // 2 more iterations on top of existing
+    const N = ribbonPts.length;
+    if(N < 3){ c.beginPath();c.fillStyle=obj.color;c.arc(ribbonPts[0].x,ribbonPts[0].y,1,0,Math.PI*2);c.fill();return; }
+
+    const left = [], right = [];
+    const taperLen = Math.min(profile.taperLen||30, N*0.3);
+    const taperTip = profile.taperTip||0.01;
+
+    // Pre-compute curvature for the whole path
+    const curvatures = new Array(N).fill(0);
+    for(let i = 2; i < N-2; i++){
+      const ax=ribbonPts[i-2].x-ribbonPts[i].x, ay=ribbonPts[i-2].y-ribbonPts[i].y;
+      const bx2=ribbonPts[i+2].x-ribbonPts[i].x, by2=ribbonPts[i+2].y-ribbonPts[i].y;
+      const cr=Math.abs(ax*by2-ay*bx2);
+      const mA=Math.hypot(ax,ay), mB=Math.hypot(bx2,by2);
+      if(mA>0.1&&mB>0.1) curvatures[i] = cr/(mA*mB);
+    }
+    // Smooth the curvature values for gradual transitions
+    const smoothCurv = new Array(N).fill(0);
+    for(let i=0;i<N;i++){
+      let sum=0,cnt=0;
+      for(let j=Math.max(0,i-6);j<=Math.min(N-1,i+6);j++){ sum+=curvatures[j]; cnt++; }
+      smoothCurv[i]=sum/cnt;
+    }
+
+    for(let i = 0; i < N; i++){
+      let w = widthAt(ribbonPts[i], obj.lineWidth, profile) * 0.5;
+
+      // Strong curvature boost: curves get much thicker (1.0 = 1.8x width)
+      w *= 1 + smoothCurv[i] * 1.8;
+
+      // Smooth taper: quadratic ease (not as sharp as calligraphy, more gradual)
+      let taper = 1;
+      if(i < taperLen){
+        const t = i/taperLen;
+        taper = taperTip + (1-taperTip) * t * t; // quadratic = smooth entry
+      }
+      if(i > N-1-taperLen){
+        const t = (N-1-i)/taperLen;
+        taper = Math.min(taper, taperTip + (1-taperTip) * t * t);
+      }
+      w *= taper;
+
+      // Wide normal window for silk-smooth edges
+      let angle;
+      const bk=Math.max(0,i-5), fw=Math.min(N-1,i+5);
+      angle = Math.atan2(ribbonPts[fw].y-ribbonPts[bk].y, ribbonPts[fw].x-ribbonPts[bk].x);
+
+      const nx = -Math.sin(angle)*w, ny = Math.cos(angle)*w;
+      left.push({x:ribbonPts[i].x+nx, y:ribbonPts[i].y+ny});
+      right.push({x:ribbonPts[i].x-nx, y:ribbonPts[i].y-ny});
+    }
+
+    // Backbone: fill circles to eliminate white gaps
+    c.fillStyle = obj.color;
+    for(let i=0;i<N;i++){
+      const lx=left[i].x-ribbonPts[i].x, ly=left[i].y-ribbonPts[i].y;
+      const r = Math.hypot(lx,ly);
+      if(r > 0.05){
+        c.beginPath(); c.arc(ribbonPts[i].x, ribbonPts[i].y, r, 0, Math.PI*2); c.fill();
+      }
+    }
+
+    // Draw with extra-smooth bezier outline
+    c.beginPath(); c.fillStyle = obj.color;
+    c.moveTo(ribbonPts[0].x, ribbonPts[0].y);
+
+    // Left edge — all quadratic curves for maximum smoothness
+    for(let i=0;i<left.length;i++){
+      if(i===0) c.lineTo(left[0].x,left[0].y);
+      else {
+        const xc=(left[i-1].x+left[i].x)*.5, yc=(left[i-1].y+left[i].y)*.5;
+        c.quadraticCurveTo(left[i-1].x,left[i-1].y,xc,yc);
+      }
+    }
+    c.lineTo(left[left.length-1].x,left[left.length-1].y);
+    c.lineTo(ribbonPts[N-1].x,ribbonPts[N-1].y);
+
+    // Right edge backward — all quadratic curves
+    for(let i=right.length-1;i>=0;i--){
+      if(i===right.length-1) c.lineTo(right[i].x,right[i].y);
+      else {
+        const xc=(right[i+1].x+right[i].x)*.5, yc=(right[i+1].y+right[i].y)*.5;
+        c.quadraticCurveTo(right[i+1].x,right[i+1].y,xc,yc);
+      }
+    }
+    c.lineTo(right[0].x,right[0].y);
+    c.lineTo(ribbonPts[0].x,ribbonPts[0].y);
+    c.closePath(); c.fill();
+
+  } else {
+    // ═══ SHARP PEN (thin/medium) ═══
+    // Extra smoothing for beautiful touchpad writing
+    const sPts = smoothPoints(pts, 1);
+    const N = sPts.length;
+    const left = [], right = [];
+    const taperLen = profile.taperLen || 10;
+    const taperTip = profile.taperTip || 0.05;
+
+    // Pre-compute smoothed curvature: thick at corners, thin in straight
+    const curvArr = new Array(N).fill(0);
+    for(let i=2;i<N-2;i++){
+      const ax=sPts[i-2].x-sPts[i].x, ay=sPts[i-2].y-sPts[i].y;
+      const bx2=sPts[i+2].x-sPts[i].x, by2=sPts[i+2].y-sPts[i].y;
+      const cr=Math.abs(ax*by2-ay*bx2);
+      const mA=Math.hypot(ax,ay), mB=Math.hypot(bx2,by2);
+      if(mA>0.1&&mB>0.1) curvArr[i]=cr/(mA*mB);
+    }
+    const sCurv = new Array(N).fill(0);
+    for(let i=0;i<N;i++){
+      let s=0,n=0;
+      for(let j=Math.max(0,i-3);j<=Math.min(N-1,i+3);j++){ s+=curvArr[j]; n++; }
+      sCurv[i]=s/n;
+    }
+
+    for(let i = 0; i < N; i++){
+      let w = widthAt(sPts[i], obj.lineWidth, profile) * 0.5;
+
+      // Curvature boost: thick at corners, thin in straight middle
+      w *= 1 + sCurv[i] * 0.5;
+
+      // Sharp taper
+      if(profile.taper && N > 3){
+        const startN = Math.min(taperLen, N * 0.3);
+        const endN = Math.min(taperLen, N * 0.3);
+        let taper = 1;
+        if(i < startN){
+          const t = i / startN;
+          taper = taperTip + (1 - taperTip) * (t * t * (3 - 2 * t));
+        }
+        if(i > N - 1 - endN){
+          const t = (N - 1 - i) / endN;
+          taper = Math.min(taper, taperTip + (1 - taperTip) * (t * t * (3 - 2 * t)));
+        }
+        w *= taper;
+      }
+
+      // Direction angle (wider window for smoother normals)
+      let angle;
+      if(N < 3){
+        angle = Math.atan2(sPts[N-1].y-sPts[0].y, sPts[N-1].x-sPts[0].x);
+      } else if(i === 0){
+        angle = Math.atan2(sPts[1].y-sPts[0].y, sPts[1].x-sPts[0].x);
+      } else if(i >= N-1){
+        angle = Math.atan2(sPts[N-1].y-sPts[N-2].y, sPts[N-1].x-sPts[N-2].x);
+      } else {
+        const back = Math.max(0, i - 3);
+        const fwd = Math.min(N - 1, i + 3);
+        angle = Math.atan2(sPts[fwd].y-sPts[back].y, sPts[fwd].x-sPts[back].x);
+      }
+
+      const nx = -Math.sin(angle) * w;
+      const ny = Math.cos(angle) * w;
+      left.push({x: sPts[i].x + nx, y: sPts[i].y + ny});
+      right.push({x: sPts[i].x - nx, y: sPts[i].y - ny});
+    }
+
+    c.beginPath();
+    c.fillStyle = obj.color;
+
+    // Pointed start tip
+    c.moveTo(sPts[0].x, sPts[0].y);
+
+    // Left edge (forward) with smooth quadratic curves
+    for(let i = 0; i < left.length; i++){
+      if(i === 0) c.lineTo(left[0].x, left[0].y);
+      else {
+        const xc = (left[i-1].x + left[i].x) * 0.5;
+        const yc = (left[i-1].y + left[i].y) * 0.5;
+        c.quadraticCurveTo(left[i-1].x, left[i-1].y, xc, yc);
+      }
+    }
+    c.lineTo(left[left.length-1].x, left[left.length-1].y);
+
+    // Pointed end tip
+    c.lineTo(sPts[N-1].x, sPts[N-1].y);
+
+    // Right edge (backward)
+    for(let i = right.length-1; i >= 0; i--){
+      if(i === right.length-1) c.lineTo(right[i].x, right[i].y);
+      else {
+        const xc = (right[i+1].x + right[i].x) * 0.5;
+        const yc = (right[i+1].y + right[i].y) * 0.5;
+        c.quadraticCurveTo(right[i+1].x, right[i+1].y, xc, yc);
+      }
+    }
+    c.lineTo(right[0].x, right[0].y);
+
+    // Back to start tip
+    c.lineTo(sPts[0].x, sPts[0].y);
+    c.closePath();
+    c.fill();
+  }
+}
+
+// ── Shapes ──
+function drawRect(c, obj){
+  c.strokeStyle = obj.color; c.lineWidth = obj.lineWidth;
+  c.lineJoin = 'round'; c.lineCap = 'round';
+  c.strokeRect(obj.x, obj.y, obj.w, obj.h);
+}
+
+function drawDiamond(c, obj){
+  const cx = obj.x + obj.w/2, cy = obj.y + obj.h/2;
+  c.strokeStyle = obj.color; c.lineWidth = obj.lineWidth;
+  c.lineJoin = 'round'; c.lineCap = 'round';
+  c.beginPath();
+  c.moveTo(cx, obj.y);
+  c.lineTo(obj.x + obj.w, cy);
+  c.lineTo(cx, obj.y + obj.h);
+  c.lineTo(obj.x, cy);
+  c.closePath();
+  c.stroke();
+}
+
+function drawEllipse(c, obj){
+  c.strokeStyle = obj.color; c.lineWidth = obj.lineWidth;
+  c.beginPath();
+  c.ellipse(obj.x+obj.w/2, obj.y+obj.h/2, Math.abs(obj.w)/2, Math.abs(obj.h)/2, 0, 0, Math.PI*2);
+  c.stroke();
+}
+
+function drawLine(c, obj){
+  c.strokeStyle = obj.color; c.lineWidth = obj.lineWidth;
+  c.lineCap = 'round';
+  c.beginPath(); c.moveTo(obj.x1,obj.y1); c.lineTo(obj.x2,obj.y2); c.stroke();
+  if(obj.type === 'arrow'){
+    const hl = 10 + obj.lineWidth * 2;
+    const a = Math.atan2(obj.y2-obj.y1, obj.x2-obj.x1);
+    c.fillStyle = obj.color;
+    c.beginPath();
+    c.moveTo(obj.x2, obj.y2);
+    c.lineTo(obj.x2 - hl*Math.cos(a-0.35), obj.y2 - hl*Math.sin(a-0.35));
+    c.lineTo(obj.x2 - hl*Math.cos(a+0.35), obj.y2 - hl*Math.sin(a+0.35));
+    c.closePath(); c.fill();
+  }
+}
+
+function drawText(c, obj){
+  c.fillStyle = obj.color;
+  c.font = `${obj.fontWeight||'600'} ${obj.fontSize}px ${obj.fontFamily||"'Caveat','Virgil',cursive"}`;
+  c.textBaseline = 'top';
+  c.textRendering = 'optimizeLegibility';
+  const lines = obj.text.split('\n');
+  const lh = obj.fontSize * 1.35;
+  lines.forEach((ln, i) => c.fillText(ln, obj.x, obj.y + i * lh));
+}
+
+function drawImage(c, obj){
+  if(!obj._img && obj._src){
+    // Restore image from data URL (after undo/redo)
+    const img = new Image();
+    img.src = obj._src;
+    obj._img = img;
+    img.onload = () => redrawAll();
+    return;
+  }
+  if(!obj._img) return;
+  c.drawImage(obj._img, obj.x, obj.y, obj.w, obj.h);
+}
+
+// ── Full redraw ──
+function rebuildCache(){
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  cacheCtx.clearRect(0, 0, w, h);
+  cacheCtx.fillStyle = bgColor;
+  cacheCtx.fillRect(0, 0, w, h);
+  if(showGrid) drawGrid(cacheCtx, w, h);
+  strokes.forEach(obj => drawObject(cacheCtx, obj));
+  cacheDirty = false;
+}
+
+function _doRedraw(){
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  if(cacheDirty) rebuildCache();
+  // Blit cached committed strokes
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(cacheCanvas, 0, 0);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function redrawAll(){
+  cacheDirty = true;
+  _doRedraw();
+}
+
+// Fast path: repaints from cache + optional in-progress stroke
+function redrawFast(inProgressObj){
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  if(cacheDirty) rebuildCache();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(cacheCanvas, 0, 0);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if(inProgressObj) drawObject(ctx, inProgressObj);
+}
+
+function hexToRgb(hex){
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `${r},${g},${b}`;
+}
+
+function drawGrid(c, w, h){
+  const gap = gridSize * zoom;
+  if(gap < 5) return;
+  const rgb = hexToRgb(gridColor);
+  const offX = ((panX % gap) + gap) % gap;
+  const offY = ((panY % gap) + gap) % gap;
+
+  if(gridStyle === 'dots'){
+    c.fillStyle = `rgba(${rgb},${gridOpacity})`;
+    for(let x = offX; x < w; x += gap){
+      for(let y = offY; y < h; y += gap){
+        c.beginPath();
+        c.arc(x, y, 0.7, 0, Math.PI*2);
+        c.fill();
+      }
+    }
+  } else if(gridStyle === 'lines'){
+    c.strokeStyle = `rgba(${rgb},${gridOpacity * 0.7})`;
+    c.lineWidth = 0.5;
+    c.beginPath();
+    for(let x = offX; x < w; x += gap){
+      c.moveTo(x, 0); c.lineTo(x, h);
+    }
+    for(let y = offY; y < h; y += gap){
+      c.moveTo(0, y); c.lineTo(w, y);
+    }
+    c.stroke();
+  } else if(gridStyle === 'cross'){
+    c.strokeStyle = `rgba(${rgb},${gridOpacity})`;
+    c.lineWidth = 0.5;
+    const cs = Math.max(2, gap * 0.15); // cross arm length
+    c.beginPath();
+    for(let x = offX; x < w; x += gap){
+      for(let y = offY; y < h; y += gap){
+        c.moveTo(x - cs, y); c.lineTo(x + cs, y);
+        c.moveTo(x, y - cs); c.lineTo(x, y + cs);
+      }
+    }
+    c.stroke();
+  }
+}
+
+// ── Selection helpers ──
+function getBounds(obj){
+  if(obj.type==='path'){
+    let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+    obj.points.forEach(p=>{x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);});
+    return{x:x0-5,y:y0-5,w:x1-x0+10,h:y1-y0+10};
+  }
+  if(obj.type==='rect'||obj.type==='circle'||obj.type==='diamond'||obj.type==='image') return{x:obj.x,y:obj.y,w:obj.w,h:obj.h};
+  if(obj.type==='line'||obj.type==='arrow'){
+    const x=Math.min(obj.x1,obj.x2), y=Math.min(obj.y1,obj.y2);
+    return{x,y,w:Math.abs(obj.x2-obj.x1)||6,h:Math.abs(obj.y2-obj.y1)||6};
+  }
+  if(obj.type==='text'){
+    ctx.save();
+    ctx.font=`${obj.fontWeight||'600'} ${obj.fontSize}px ${obj.fontFamily||"'Caveat','Virgil',cursive"}`;
+    const lines=obj.text.split('\n');
+    let maxW=40;
+    lines.forEach(l=>{const m=ctx.measureText(l).width;if(m>maxW)maxW=m;});
+    ctx.restore();
+    return{x:obj.x,y:obj.y,w:maxW,h:obj.fontSize*1.35*lines.length};
+  }
+  return{x:0,y:0,w:0,h:0};
+}
+
+function hitTest(p){
+  for(let i=strokes.length-1;i>=0;i--){
+    const b=getBounds(strokes[i]);
+    if(p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h) return i;
+  }
+  return -1;
+}
+
+function drawSelection(){
+  const w=wrap.clientWidth, h=wrap.clientHeight;
+  selCtx.clearRect(0,0,w,h);
+  if(selectedIdx<0||selectedIdx>=strokes.length) return;
+  const b=getBounds(strokes[selectedIdx]);
+  selCtx.save();
+  selCtx.translate(panX,panY);
+  selCtx.scale(zoom,zoom);
+  selCtx.strokeStyle='#1c7ed6';
+  selCtx.lineWidth=1.2/zoom;
+  selCtx.setLineDash([5/zoom,4/zoom]);
+  selCtx.strokeRect(b.x,b.y,b.w,b.h);
+  selCtx.setLineDash([]);
+  const hs=4/zoom;
+  [[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]].forEach(([hx,hy])=>{
+    selCtx.fillStyle='#fff';selCtx.fillRect(hx-hs,hy-hs,hs*2,hs*2);
+    selCtx.strokeStyle='#1c7ed6';selCtx.strokeRect(hx-hs,hy-hs,hs*2,hs*2);
+  });
+  selCtx.restore();
+}
+
+function moveObject(obj,dx,dy){
+  if(obj.type==='path') obj.points.forEach(p=>{p.x+=dx;p.y+=dy;});
+  else if(obj.type==='rect'||obj.type==='circle'||obj.type==='diamond'||obj.type==='image'){obj.x+=dx;obj.y+=dy;}
+  else if(obj.type==='line'||obj.type==='arrow'){obj.x1+=dx;obj.y1+=dy;obj.x2+=dx;obj.y2+=dy;}
+  else if(obj.type==='text'){obj.x+=dx;obj.y+=dy;}
+}
+
+// ══════════════════════════════════════
+//  EVENT HANDLING
+// ══════════════════════════════════════
+
+// Pointer events (mouse + stylus)
+wrap.addEventListener('pointerdown', onDown);
+wrap.addEventListener('pointermove', e => {
+  // Ctrl+touchpad: no button pressed but Ctrl held → draw by just moving
+  if(ctrlHeld && e.buttons === 0 && (tool==='pen'||tool==='eraser'||tool==='select')){
+    const p = canvasCoord(e);
+    if(!ctrlDrawing){
+      // Start a new stroke
+      ctrlDrawing = true;
+      isDrawing = true;
+      redoStack = [];
+      if(tool==='pen'||tool==='eraser'){
+        currentPath = [p];
+      } else if(tool==='select'){
+        const hit = hitTest(p);
+        selectedIdx = hit;
+        drawSelection();
+        if(hit >= 0){
+          isDraggingSel = true;
+          const b = getBounds(strokes[hit]);
+          dragOff = {x:p.x-b.x, y:p.y-b.y};
+        }
+      }
+      return;
+    }
+    // Continue the stroke
+    onMove(e);
+    return;
+  }
+
+  // Normal: coalesced events for smooth strokes
+  if(isDrawing && (tool==='pen'||tool==='eraser') && e.getCoalescedEvents){
+    const evts = e.getCoalescedEvents();
+    if(evts.length > 0){ evts.forEach(ce => onMove(ce)); return; }
+  }
+  onMove(e);
+});
+wrap.addEventListener('pointerup', e => {
+  if(ctrlDrawing) return; // Ctrl+touchpad: don't end on pointerup, wait for Ctrl release
+  onUp(e);
+});
+wrap.addEventListener('pointerleave', e => {
+  if(ctrlDrawing){
+    // Finger left the trackpad but Ctrl still held — finish stroke
+    ctrlDrawing = false;
+    finishStroke();
+    return;
+  }
+  onUp(e);
+});
+wrap.addEventListener('wheel', onWheel, {passive:false});
+
+// ── Touch: 1-finger draw, 2-finger pan/zoom ──
+let touchMode = null, lastTouchDist = 0, lastTouchCenter = {x:0,y:0};
+
+wrap.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if(e.touches.length === 2){
+    if(touchMode === 'draw'){
+      isDrawing = false; currentPath = []; shapeStart = null; redrawAll();
+    }
+    touchMode = 'pan';
+    const t0=e.touches[0], t1=e.touches[1];
+    lastTouchDist = Math.hypot(t1.clientX-t0.clientX, t1.clientY-t0.clientY);
+    lastTouchCenter = {x:(t0.clientX+t1.clientX)/2, y:(t0.clientY+t1.clientY)/2};
+  } else if(e.touches.length===1 && touchMode!=='pan'){
+    touchMode = 'draw';
+    const t = e.touches[0];
+    onDown({clientX:t.clientX, clientY:t.clientY, button:0, pressure:t.force||0.5, preventDefault(){}});
+  }
+},{passive:false});
+
+wrap.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if(e.touches.length===2 && touchMode==='pan'){
+    const t0=e.touches[0], t1=e.touches[1];
+    const dist = Math.hypot(t1.clientX-t0.clientX, t1.clientY-t0.clientY);
+    const cx = (t0.clientX+t1.clientX)/2, cy = (t0.clientY+t1.clientY)/2;
+    const rect = canvas.getBoundingClientRect();
+    panX += cx - lastTouchCenter.x;
+    panY += cy - lastTouchCenter.y;
+    if(lastTouchDist>0){
+      const scale = dist/lastTouchDist;
+      const zx = cx-rect.left, zy = cy-rect.top;
+      const oldZ = zoom;
+      zoom = Math.max(0.1, Math.min(5, zoom*scale));
+      panX = zx-(zx-panX)*(zoom/oldZ);
+      panY = zy-(zy-panY)*(zoom/oldZ);
+      document.getElementById('zoomLevel').textContent = Math.round(zoom*100)+'%';
+    }
+    lastTouchDist = dist;
+    lastTouchCenter = {x:cx,y:cy};
+    redrawAll(); drawSelection();
+  } else if(e.touches.length===1 && touchMode==='draw'){
+    const t = e.touches[0];
+    onMove({clientX:t.clientX, clientY:t.clientY, pressure:t.force||0.5, preventDefault(){}});
+  }
+},{passive:false});
+
+wrap.addEventListener('touchend', e => {
+  e.preventDefault();
+  if(e.touches.length===0){
+    if(touchMode==='draw'){
+      const t = e.changedTouches[0];
+      onUp({clientX:t.clientX, clientY:t.clientY, pressure:t.force||0.5, preventDefault(){}});
+    }
+    touchMode = null; lastTouchDist = 0;
+  } else if(e.touches.length===1 && touchMode==='pan'){
+    const t = e.touches[0];
+    lastTouchCenter = {x:t.clientX, y:t.clientY};
+  }
+},{passive:false});
+
+wrap.addEventListener('touchcancel', e => {
+  e.preventDefault();
+  if(touchMode==='draw'){
+    const t = e.changedTouches[0];
+    onUp({clientX:t.clientX, clientY:t.clientY, pressure:0.5, preventDefault(){}});
+  }
+  touchMode = null; lastTouchDist = 0;
+},{passive:false});
+
+// ── Ctrl+touchpad drawing ──
+// Hold Ctrl and move finger on touchpad (no click needed) to draw/erase/select.
+// Tracks Ctrl state globally. When Ctrl is held and pointer moves over canvas
+// with no buttons pressed, we treat it as drawing.
+let ctrlHeld = false;
+let ctrlDrawing = false; // true while actively Ctrl+touchpad drawing
+
+document.addEventListener('keydown', e => {
+  if(e.key === 'Control' && !ctrlHeld){
+    ctrlHeld = true;
+  }
+});
+document.addEventListener('keyup', e => {
+  if(e.key === 'Control'){
+    ctrlHeld = false;
+    // If we were Ctrl+touchpad drawing, finish the stroke
+    if(ctrlDrawing){
+      ctrlDrawing = false;
+      finishStroke();
+    }
+  }
+});
+
+function finishStroke(){
+  if(!isDrawing) return;
+  isDrawing = false;
+    if(tool==='pen'||tool==='eraser'){
+    if(currentPath.length > 1){
+      strokes.push({
+        type:'path', points:currentPath,
+        color: tool==='eraser'?'#ffffff':color,
+        lineWidth: tool==='eraser'?lineWidth*3:lineWidth,
+        pen: tool==='eraser'?'medium':penStyle
+      });
+    }
+    currentPath = [];
+  } else if(shapeStart){
+    // shapes need an end point — skip if none
+    shapeStart = null;
+  }
+  redrawAll();
+}
+
+function onDown(e){
+  // Ctrl+click on trackpad: treat as normal left-click (prevent context menu)
+  if(e.ctrlKey && e.button === 0){
+    e.preventDefault();
+  }
+
+  const p = canvasCoord(e);
+  if(e.button===1){ isPanning=true; panStart={x:e.clientX-panX,y:e.clientY-panY}; wrap.style.cursor='grabbing'; return; }
+
+  // Only proceed on left-click (button 0) — works for both normal click and Ctrl+trackpad
+  if(e.button !== 0 && e.button !== undefined) return;
+
+  if(tool==='select'){
+    const hit=hitTest(p);selectedIdx=hit;drawSelection();
+    if(hit>=0){isDraggingSel=true;const b=getBounds(strokes[hit]);dragOff={x:p.x-b.x,y:p.y-b.y};}
+    return;
+  }
+  if(tool==='text'){
+    commitText();
+    textInput.style.display='block';
+    const wr = wrap.getBoundingClientRect();
+    textInput.style.left=(e.clientX-wr.left)+'px';
+    textInput.style.top=(e.clientY-wr.top)+'px';
+    textInput.style.fontSize=(Math.max(16, lineWidth*5+14))+'px';
+    textInput.style.color=color;
+    textInput.value=''; textInput.focus(); textInput._pos=p;
+    return;
+  }
+  isDrawing=true; redoStack=[];
+  if(tool==='pen'||tool==='eraser') currentPath=[p];
+  else shapeStart=p;
+}
+
+function onMove(e){
+  const p = canvasCoord(e);
+
+  if(isPanning){ panX=e.clientX-panStart.x; panY=e.clientY-panStart.y; redrawAll(); drawSelection(); return; }
+  if(isDraggingSel && selectedIdx>=0){
+    const b=getBounds(strokes[selectedIdx]);
+    moveObject(strokes[selectedIdx], p.x-b.x-dragOff.x, p.y-b.y-dragOff.y);
+    redrawAll(); drawSelection(); return;
+  }
+  if(!isDrawing) return;
+
+  if(tool==='pen'||tool==='eraser'){
+    const usePF = tool==='pen' && penStyle === 'calligraphy' && window.__getStroke;
+    if(usePF){
+      // Smart point pushing for perfect-freehand calligraphy
+      if(currentPath.length === 0){
+        currentPath.push(p);
+      } else {
+        const last = currentPath[currentPath.length - 1];
+        const zoomSmooth = zoom > 1 ? Math.min(0.58, 0.25 + (zoom - 1) * 0.08) : 0.25;
+        const fx = last.x * zoomSmooth + p.x * (1 - zoomSmooth);
+        const fy = last.y * zoomSmooth + p.y * (1 - zoomSmooth);
+        const fp = (last.pressure||0.5) * 0.45 + (p.pressure||0.5) * 0.55;
+        const dx = fx - last.x, dy = fy - last.y;
+        const dist = Math.hypot(dx, dy);
+        const maxJump = 64 / zoom;
+        if(dist > maxJump){
+          currentPath.push({x:fx, y:fy, pressure:fp, time:p.time});
+        } else {
+          const maxStep = Math.max(0.5, 2.2 / zoom);
+          const steps = Math.max(1, Math.ceil(dist / maxStep));
+          for(let i = 1; i <= steps; i++){
+            const t = i / steps;
+            currentPath.push({
+              x: last.x + dx * t,
+              y: last.y + dy * t,
+              pressure: (last.pressure||0.5) + (fp - (last.pressure||0.5)) * t,
+              time: p.time
+            });
+          }
+        }
+      }
+    } else {
+      // Adaptive streamline: optimized for touchpad writing (other pens)
+      if(currentPath.length > 0){
+        const last = currentPath[currentPath.length - 1];
+        const dist = Math.hypot(p.x - last.x, p.y - last.y);
+        if(dist < 0.8) return;
+        const velocity = dist / Math.max(1, p.time - (last.time||0));
+        const S = 0.3 + Math.min(0.35, velocity * 0.4);
+        p.x = last.x + (p.x - last.x) * S;
+        p.y = last.y + (p.y - last.y) * S;
+      }
+      currentPath.push(p);
+    }
+    // Fast draw: blit cached strokes + only render current stroke (big perf win)
+    redrawFast({
+      type:'path', points: currentPath,
+      color: tool==='eraser'?'#ffffff':color,
+      lineWidth: tool==='eraser'?lineWidth*3:lineWidth,
+      pen: tool==='eraser'?'medium':penStyle,
+      last: false
+    });
+  } else {
+    redrawAll();
+    const dx=p.x-shapeStart.x, dy=p.y-shapeStart.y;
+    ctx.save(); ctx.translate(panX,panY); ctx.scale(zoom,zoom);
+    ctx.strokeStyle=color; ctx.lineWidth=lineWidth; ctx.lineCap='round'; ctx.lineJoin='round';
+    if(tool==='rect'){ ctx.strokeRect(shapeStart.x,shapeStart.y,dx,dy); }
+    else if(tool==='diamond'){
+      const cx2=shapeStart.x+dx/2, cy2=shapeStart.y+dy/2;
+      ctx.beginPath();ctx.moveTo(cx2,shapeStart.y);ctx.lineTo(shapeStart.x+dx,cy2);ctx.lineTo(cx2,shapeStart.y+dy);ctx.lineTo(shapeStart.x,cy2);ctx.closePath();ctx.stroke();
+    }
+    else if(tool==='circle'){ctx.beginPath();ctx.ellipse(shapeStart.x+dx/2,shapeStart.y+dy/2,Math.abs(dx)/2,Math.abs(dy)/2,0,0,Math.PI*2);ctx.stroke();}
+    else if(tool==='line'||tool==='arrow'){
+      ctx.beginPath();ctx.moveTo(shapeStart.x,shapeStart.y);ctx.lineTo(p.x,p.y);ctx.stroke();
+      if(tool==='arrow'){
+        const hl=10+lineWidth*2,a=Math.atan2(p.y-shapeStart.y,p.x-shapeStart.x);
+        ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(p.x,p.y);
+        ctx.lineTo(p.x-hl*Math.cos(a-.35),p.y-hl*Math.sin(a-.35));
+        ctx.lineTo(p.x-hl*Math.cos(a+.35),p.y-hl*Math.sin(a+.35));
+        ctx.closePath();ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+}
+
+function onUp(e){
+  if(isPanning){isPanning=false;wrap.style.cursor=tool==='select'?'default':'crosshair';return;}
+  if(isDraggingSel){isDraggingSel=false;return;}
+  if(!isDrawing) return;
+  isDrawing=false;
+  const p = canvasCoord(e);
+
+  if(tool==='pen'||tool==='eraser'){
+    if(currentPath.length>1){
+      strokes.push({
+        type:'path',points:currentPath,
+        color:tool==='eraser'?'#ffffff':color,
+        lineWidth:tool==='eraser'?lineWidth*3:lineWidth,
+        pen:tool==='eraser'?'medium':penStyle
+      });
+    }
+    currentPath=[];
+  } else if(shapeStart){
+    const dx=p.x-shapeStart.x, dy=p.y-shapeStart.y;
+    if(Math.abs(dx)>2||Math.abs(dy)>2){
+      if(tool==='rect') strokes.push({type:'rect',x:shapeStart.x,y:shapeStart.y,w:dx,h:dy,color,lineWidth});
+      else if(tool==='diamond') strokes.push({type:'diamond',x:shapeStart.x,y:shapeStart.y,w:dx,h:dy,color,lineWidth});
+      else if(tool==='circle') strokes.push({type:'circle',x:shapeStart.x,y:shapeStart.y,w:dx,h:dy,color,lineWidth});
+      else if(tool==='line') strokes.push({type:'line',x1:shapeStart.x,y1:shapeStart.y,x2:p.x,y2:p.y,color,lineWidth});
+      else if(tool==='arrow') strokes.push({type:'arrow',x1:shapeStart.x,y1:shapeStart.y,x2:p.x,y2:p.y,color,lineWidth});
+    }
+    shapeStart=null;
+  }
+  redrawAll();
+}
+
+// ── Text commit ──
+function commitText(){
+  if(textInput.style.display==='block' && textInput.value.trim()){
+    const p = textInput._pos;
+    const fs = parseInt(textInput.style.fontSize)||20;
+    strokes.push({
+      type:'text', x:p.x, y:p.y, text:textInput.value,
+      color, fontSize:fs, fontWeight:'600',
+      fontFamily:"'Caveat','Virgil',cursive"
+    });
+    redoStack=[];
+    redrawAll();
+  }
+  textInput.style.display='none'; textInput.value='';
+}
+
+// Auto-resize textarea
+textInput.addEventListener('input', () => {
+  textInput.style.height = 'auto';
+  textInput.style.height = textInput.scrollHeight + 'px';
+  textInput.style.width = Math.max(60, textInput.scrollWidth) + 'px';
+});
+
+// ── Zoom ──
+function setZoom(z, cx, cy){
+  const oldZ=zoom;
+  zoom=Math.max(0.1,Math.min(5,z));
+  if(cx!==undefined){panX=cx-(cx-panX)*(zoom/oldZ);panY=cy-(cy-panY)*(zoom/oldZ);}
+  document.getElementById('zoomLevel').textContent=Math.round(zoom*100)+'%';
+  redrawAll();drawSelection();
+}
+
+function onWheel(e){
+  e.preventDefault();
+  const r=canvas.getBoundingClientRect();
+  const cx=e.clientX-r.left, cy=e.clientY-r.top;
+  if(e.ctrlKey){
+    setZoom(zoom*(e.deltaY>0?0.95:1.05), cx, cy);
+  } else {
+    panX-=e.deltaX; panY-=e.deltaY;
+    redrawAll(); drawSelection();
+  }
+}
+
+document.getElementById('zoomIn').addEventListener('click',()=>setZoom(zoom*1.2));
+document.getElementById('zoomOut').addEventListener('click',()=>setZoom(zoom/1.2));
+document.getElementById('zoomFit').addEventListener('click',()=>{zoom=1;panX=0;panY=0;setZoom(1);});
+
+// ── Undo/Redo ──
+function undo(){if(!strokes.length)return;redoStack.push(strokes.pop());selectedIdx=-1;redrawAll();drawSelection();}
+function redo(){if(!redoStack.length)return;strokes.push(redoStack.pop());redrawAll();}
+document.getElementById('undoBtn').addEventListener('click',undo);
+document.getElementById('redoBtn').addEventListener('click',redo);
+
+// ── Clear ──
+document.getElementById('clearBtn').addEventListener('click',()=>{
+  if(!strokes.length)return;redoStack.push(...strokes);strokes=[];selectedIdx=-1;redrawAll();drawSelection();
+});
+
+// ── Save PNG ──
+document.getElementById('saveBtn').addEventListener('click',()=>{
+  const exp=document.createElement('canvas');
+  const ew=canvas.width, eh=canvas.height;
+  exp.width=ew; exp.height=eh;
+  const ec=exp.getContext('2d');
+  ec.scale(dpr,dpr);
+  ec.fillStyle=bgColor;ec.fillRect(0,0,ew/dpr,eh/dpr);
+  strokes.forEach(obj=>drawObject(ec,obj));
+  const a=document.createElement('a');
+  a.download='whiteboard.png';a.href=exp.toDataURL('image/png');a.click();
+});
+
+// ── Upload Image / PDF ──
+const fileInput = document.getElementById('fileInput');
+document.getElementById('uploadBtn').addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', e => {
+  Array.from(e.target.files).forEach(file => {
+    if(file.type === 'application/pdf'){
+      loadPDF(file);
+    } else if(file.type.startsWith('image/')){
+      loadImage(file);
+    }
+  });
+  fileInput.value = '';
+});
+
+// Also support drag & drop onto canvas
+wrap.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+wrap.addEventListener('drop', e => {
+  e.preventDefault();
+  Array.from(e.dataTransfer.files).forEach(file => {
+    if(file.type === 'application/pdf') loadPDF(file);
+    else if(file.type.startsWith('image/')) loadImage(file);
+  });
+});
+
+// Also support paste from clipboard
+document.addEventListener('paste', e => {
+  if(e.target === textInput) return;
+  const items = e.clipboardData.items;
+  for(let i = 0; i < items.length; i++){
+    if(items[i].type.startsWith('image/')){
+      const file = items[i].getAsFile();
+      if(file) loadImage(file);
+    }
+  }
+});
+
+function loadImage(file){
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      // Place at center of current view, scale down if too large
+      const maxW = wrap.clientWidth * 0.6 / zoom;
+      const maxH = wrap.clientHeight * 0.6 / zoom;
+      let w = img.naturalWidth, h = img.naturalHeight;
+      if(w > maxW){ const s = maxW / w; w *= s; h *= s; }
+      if(h > maxH){ const s = maxH / h; w *= s; h *= s; }
+      const cx = (-panX + wrap.clientWidth / 2) / zoom - w / 2;
+      const cy = (-panY + wrap.clientHeight / 2) / zoom - h / 2;
+      strokes.push({ type:'image', x:cx, y:cy, w, h, _img:img, _src:ev.target.result });
+      redoStack = [];
+      redrawAll();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// PDF loading via pdf.js CDN
+let pdfjsLoaded = false;
+function ensurePDFJS(){
+  return new Promise(resolve => {
+    if(pdfjsLoaded && window.pdfjsLib){ resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs';
+    s.type = 'module';
+    // Use global worker
+    const s2 = document.createElement('script');
+    s2.textContent = `
+      import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs').then(mod => {
+        window.pdfjsLib = mod;
+        mod.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
+        window._pdfjsReady && window._pdfjsReady();
+      });
+    `;
+    s2.type = 'module';
+    document.head.appendChild(s2);
+    window._pdfjsReady = () => { pdfjsLoaded = true; resolve(); };
+    // Fallback timeout
+    setTimeout(() => { if(!pdfjsLoaded) resolve(); }, 8000);
+  });
+}
+
+async function loadPDF(file){
+  await ensurePDFJS();
+  if(!window.pdfjsLib){ alert('PDF library failed to load. Try uploading an image instead.'); return; }
+
+  const arrayBuf = await file.arrayBuffer();
+  const pdf = await window.pdfjsLib.getDocument({data:arrayBuf}).promise;
+  const SCALE = 2; // render at 2x for quality
+
+  // Stack pages vertically, centered
+  let yOff = (-panY + 40) / zoom;
+  const startX = (-panX + wrap.clientWidth * 0.1) / zoom;
+
+  for(let p = 1; p <= pdf.numPages; p++){
+    const page = await pdf.getPage(p);
+    const vp = page.getViewport({scale: SCALE});
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = vp.width;
+    offCanvas.height = vp.height;
+    const offCtx = offCanvas.getContext('2d');
+    await page.render({canvasContext:offCtx, viewport:vp}).promise;
+
+    // Convert to image for lightweight storage
+    const dataUrl = offCanvas.toDataURL('image/png');
+    const img = new Image();
+    await new Promise(res => { img.onload = res; img.src = dataUrl; });
+
+    // Scale to fit nicely on canvas
+    let w = vp.width / SCALE, h = vp.height / SCALE;
+    const maxW = wrap.clientWidth * 0.7 / zoom;
+    if(w > maxW){ const s = maxW / w; w *= s; h *= s; }
+
+    strokes.push({ type:'image', x:startX, y:yOff, w, h, _img:img, _src:dataUrl });
+    yOff += h + 20;
+  }
+  redoStack = [];
+  redrawAll();
+}
+
+// ── Keyboard shortcuts ──
+document.addEventListener('keydown', e => {
+  if(e.target===textInput) return;
+
+  // Tab → toggle toolbar visibility
+  if(e.key==='Tab'){e.preventDefault();bottomToolbar.classList.contains('hidden')?showToolbar():hideToolbar();return;}
+
+  // Ctrl+Shift+Q → Select (lasso)
+  if(e.ctrlKey&&e.shiftKey&&(e.key==='q'||e.key==='Q')){e.preventDefault();document.querySelector('.tool-btn[data-tool="select"]').click();return;}
+  // Ctrl+Q → Pen
+  if(e.ctrlKey&&!e.shiftKey&&(e.key==='q'||e.key==='Q')){e.preventDefault();document.querySelector('.tool-btn[data-tool="pen"]').click();return;}
+  // Ctrl+E → Eraser
+  if(e.ctrlKey&&(e.key==='e'||e.key==='E')){e.preventDefault();document.querySelector('.tool-btn[data-tool="eraser"]').click();return;}
+
+  if(e.ctrlKey&&e.key==='z'){e.preventDefault();undo();return;}
+  if((e.ctrlKey&&e.key==='y')||(e.ctrlKey&&e.shiftKey&&e.key==='Z')){e.preventDefault();redo();return;}
+  if(e.key==='Delete'&&selectedIdx>=0){
+    redoStack.push(strokes.splice(selectedIdx,1)[0]);
+    selectedIdx=-1;redrawAll();drawSelection();return;
+  }
+  const keyMap={v:'select',p:'pen',e:'eraser',r:'rect',d:'diamond',o:'circle',a:'arrow',l:'line',t:'text'};
+  if(keyMap[e.key]) document.querySelector(`.tool-btn[data-tool="${keyMap[e.key]}"]`).click();
+});
+
+// Prevent context menu on canvas so Ctrl+click works for drawing
+wrap.addEventListener('contextmenu', e => e.preventDefault());
+
+// Space to pan
+let spaceHeld=false;
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&e.target!==textInput){e.preventDefault();spaceHeld=true;wrap.style.cursor='grab';}});
+document.addEventListener('keyup',e=>{if(e.code==='Space'){spaceHeld=false;wrap.style.cursor=tool==='select'?'default':'crosshair';}});
+wrap.addEventListener('pointerdown',e=>{
+  if(spaceHeld){isPanning=true;panStart={x:e.clientX-panX,y:e.clientY-panY};wrap.style.cursor='grabbing';e.stopPropagation();}
+},true);
+
+redrawAll();
+</script>
+</body>
+</html>
