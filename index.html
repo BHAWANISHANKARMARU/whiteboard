@@ -62,9 +62,6 @@ canvas{display:block;position:absolute;top:0;left:0;}
 }
 .color-swatch:hover{transform:scale(1.15);}
 .color-swatch.active{border-color:#1c7ed6;box-shadow:0 0 0 2px #e7f5ff;}
-#customColor{width:22px;height:22px;border:2px solid #dee2e6;border-radius:50%;cursor:pointer;padding:0;overflow:hidden;background:none;flex-shrink:0;}
-#customColor::-webkit-color-swatch-wrapper{padding:0;}
-#customColor::-webkit-color-swatch{border:none;border-radius:50%;}
 
 /* Size slider inline */
 #sizeSlider{width:60px;accent-color:#1c7ed6;margin:0;flex-shrink:0;}
@@ -89,6 +86,7 @@ canvas{display:block;position:absolute;top:0;left:0;}
 .pen-opt{
   padding:4px 12px;border-radius:6px;border:1.5px solid transparent;
   background:#f8f9fa;color:#495057;cursor:pointer;font-size:11px;font-weight:500;transition:.12s;
+  user-select:none;
 }
 .pen-opt:hover{background:#e9ecef;}
 .pen-opt.active{border-color:#1c7ed6;color:#1c7ed6;background:#e7f5ff;}
@@ -202,14 +200,13 @@ canvas{display:block;position:absolute;top:0;left:0;}
 
   <div class="sep"></div>
 
-  <!-- Colors -->
-  <div class="color-swatch active" data-color="#1e1e1e" style="background:#1e1e1e"></div>
-  <div class="color-swatch" data-color="#e03131" style="background:#e03131"></div>
-  <div class="color-swatch" data-color="#1c7ed6" style="background:#1c7ed6"></div>
-  <div class="color-swatch" data-color="#2f9e44" style="background:#2f9e44"></div>
-  <div class="color-swatch" data-color="#f08c00" style="background:#f08c00"></div>
-  <div class="color-swatch" data-color="#7048e8" style="background:#7048e8"></div>
-  <input type="color" id="customColor" value="#1e1e1e" title="Custom color">
+  <!-- Colors (double-click a swatch to change it) -->
+  <div class="color-swatch active" data-slot="0" data-color="#1e1e1e" style="background:#1e1e1e" title="Click to use · double-click to change"></div>
+  <div class="color-swatch" data-slot="1" data-color="#e03131" style="background:#e03131" title="Click to use · double-click to change"></div>
+  <div class="color-swatch" data-slot="2" data-color="#1c7ed6" style="background:#1c7ed6" title="Click to use · double-click to change"></div>
+  <div class="color-swatch" data-slot="3" data-color="#2f9e44" style="background:#2f9e44" title="Click to use · double-click to change"></div>
+  <div class="color-swatch" data-slot="4" data-color="#f08c00" style="background:#f08c00" title="Click to use · double-click to change"></div>
+  <div class="color-swatch" data-slot="5" data-color="#7048e8" style="background:#7048e8" title="Click to use · double-click to change"></div>
 
   <div class="sep"></div>
 
@@ -355,7 +352,6 @@ function scheduleRedraw(){
 
 // ── Persisted Settings ──
 const SETTINGS_KEY = 'whiteboard_settings_v1';
-const PEN_COLORS_KEY = 'whiteboard_pen_colors_v1';
 function loadSettings(){
   try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; }
   catch(e){ return {}; }
@@ -365,12 +361,7 @@ function saveSettings(){
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({
       color, lineWidth, penStyle, bgColor, showGrid, gridColor, gridStyle, gridSize
     }));
-    localStorage.setItem(PEN_COLORS_KEY, JSON.stringify(penColors));
   } catch(e){}
-}
-function loadPenColors(){
-  try { return JSON.parse(localStorage.getItem(PEN_COLORS_KEY)) || {}; }
-  catch(e){ return {}; }
 }
 const _s = loadSettings();
 
@@ -385,10 +376,6 @@ let isPanning = false, panStart = {x:0,y:0};
 let strokes = [], redoStack = [];
 let isDrawing = false, currentPath = [], shapeStart = null;
 let selectedIdx = -1, isDraggingSel = false, dragOff = {x:0,y:0};
-
-// Per-pen remembered colors (each pen remembers its last color)
-let penColors = loadPenColors();
-if(penColors[penStyle]) color = penColors[penStyle];
 
 // Background settings
 let bgColor = _s.bgColor || '#ffffff';
@@ -536,34 +523,123 @@ document.getElementById('gridSizeSlider').addEventListener('input', e => {
   redrawAll();
 });
 
-// Pen options — each pen remembers its own color
+// Pen options — single-click selects the pen
 document.querySelectorAll('.pen-opt').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.pen-opt').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     penStyle = btn.dataset.pen;
-    // Restore this pen's last-used color (or keep current if none saved)
-    if(penColors[penStyle]) applyColor(penColors[penStyle]);
-    else saveSettings();
+    saveSettings();
   });
 });
 
-// Colors
+// ── Colors ──
+// Single-click a swatch: use that color as active.
+// Double-click a swatch: open native color picker to CHANGE that swatch's
+// color permanently (persisted). Works like wiping a marker and replacing it.
 function applyColor(newColor){
   color = newColor;
-  penColors[penStyle] = newColor;
-  document.getElementById('customColor').value = newColor;
   document.querySelectorAll('.color-swatch').forEach(s => {
     s.classList.toggle('active', s.dataset.color === newColor);
   });
   saveSettings();
 }
+
+// Restore any previously-customized swatches from localStorage
+(function restoreSwatches(){
+  try {
+    const saved = JSON.parse(localStorage.getItem('whiteboard_swatches_v1') || 'null');
+    if(!saved || typeof saved !== 'object') return;
+    document.querySelectorAll('.color-swatch').forEach(sw => {
+      const slot = sw.dataset.slot;
+      if(saved[slot]){
+        sw.dataset.color = saved[slot];
+        sw.style.background = saved[slot];
+      }
+    });
+  } catch(e){}
+})();
+
+function saveSwatches(){
+  try {
+    const map = {};
+    document.querySelectorAll('.color-swatch').forEach(sw => {
+      map[sw.dataset.slot] = sw.dataset.color;
+    });
+    localStorage.setItem('whiteboard_swatches_v1', JSON.stringify(map));
+  } catch(e){}
+}
+
+let _editingSwatch = null;
+
+function openSwatchPicker(sw){
+  _editingSwatch = sw;
+
+  // Remove any leftover picker from a previous call
+  const old = document.getElementById('_swatchPicker');
+  if(old) old.remove();
+
+  // Create a fresh <input type="color"> every time — reusing the same element
+  // causes browsers to silently ignore .click() after the first use.
+  const inp = document.createElement('input');
+  inp.type = 'color';
+  inp.id = '_swatchPicker';
+  inp.value = sw.dataset.color || '#000000';
+
+  const r = sw.getBoundingClientRect();
+  Object.assign(inp.style, {
+    position: 'fixed',
+    left: r.left + 'px',
+    top:  r.top  + 'px',
+    width:  r.width  + 'px',
+    height: r.height + 'px',
+    opacity: '0.01',
+    pointerEvents: 'none',
+    zIndex: '9999'
+  });
+
+  inp.addEventListener('input', e => {
+    if(!_editingSwatch) return;
+    const wasActive = _editingSwatch.classList.contains('active');
+    _editingSwatch.dataset.color = e.target.value;
+    _editingSwatch.style.background = e.target.value;
+    saveSwatches();
+    if(wasActive) applyColor(e.target.value);
+  });
+  inp.addEventListener('change', () => {
+    _editingSwatch = null;
+    inp.remove();
+  });
+
+  document.body.appendChild(inp);
+  void inp.offsetTop; // force layout so position is applied before the picker opens
+  inp.click();
+}
+
 document.querySelectorAll('.color-swatch').forEach(sw => {
-  sw.addEventListener('click', () => applyColor(sw.dataset.color));
+  let _tapTimer = null;
+
+  sw.addEventListener('click', (e) => {
+    if(_tapTimer){
+      clearTimeout(_tapTimer);
+      _tapTimer = null;
+      e.preventDefault();
+      e.stopPropagation();
+      openSwatchPicker(sw);
+    } else {
+      _tapTimer = setTimeout(() => {
+        _tapTimer = null;
+        applyColor(sw.dataset.color);
+      }, 260);
+    }
+  });
+
+  sw.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    openSwatchPicker(sw);
+  });
 });
-document.getElementById('customColor').addEventListener('input', e => {
-  applyColor(e.target.value);
-});
+
 
 // Size
 const sizeSlider = document.getElementById('sizeSlider');
@@ -643,18 +719,28 @@ function interpolateSpline(pts){
 function preprocessPoints(rawPoints){
   if(rawPoints.length < 2) return rawPoints;
 
-  // 1) Compute speed at each point
+  // 1) Compute speed at each point. Look back until we have a meaningful
+  //    time window (≥6ms) — this guards against any dense-interp points
+  //    whose time collides with a neighbour and would produce a fake speed spike.
   const pts = rawPoints.map((p,i) => {
     if(i === 0) return {...p, speed: 0};
-    const dx = p.x - rawPoints[i-1].x;
-    const dy = p.y - rawPoints[i-1].y;
-    const dt = Math.max(1, (p.time||0) - (rawPoints[i-1].time||0));
+    let k = i - 1;
+    let dt = (p.time||0) - (rawPoints[k].time||0);
+    while(k > 0 && dt < 6){
+      k--;
+      dt = (p.time||0) - (rawPoints[k].time||0);
+    }
+    dt = Math.max(1, dt);
+    const dx = p.x - rawPoints[k].x;
+    const dy = p.y - rawPoints[k].y;
     return {...p, speed: Math.hypot(dx, dy) / dt};
   });
 
-  // 2) Light moving-average (window=3) to clean any residual jitter
+  // 2) Wider moving-average (window=5) for silky-smooth width transitions —
+  //    eliminates any residual per-point speed/pressure wobble that would
+  //    otherwise show up as visible bumps ("dhabe") along the stroke edge.
   const smoothed = [];
-  const W = 1;
+  const W = 2;
   for(let i = 0; i < pts.length; i++){
     let sx=0, sy=0, sp=0, ss=0, n=0;
     for(let j = Math.max(0,i-W); j <= Math.min(pts.length-1,i+W); j++){
@@ -1686,10 +1772,16 @@ function onMove(e){
       const dist = Math.hypot(dx, dy);
       if(dist < 0.3) return; // ignore micro-jitter
       const maxJump = 64 / zoom;
+      const lastTime = last.time || p.time;
+      const dt = (p.time || 0) - lastTime;
       if(dist > maxJump){
         currentPath.push({x:fx, y:fy, pressure:fp, time:p.time});
       } else {
-        const maxStep = Math.max(0.5, 2.0 / zoom);
+        // Slightly larger step (3px) + MONOTONIC time interpolation so every
+        // point has a realistic dt -> preprocessPoints computes uniform speed.
+        // (Previously all dense points shared time=p.time, causing fake speed
+        // spikes and oscillating widthAt → visible beads along the stroke.)
+        const maxStep = Math.max(0.75, 3.0 / zoom);
         const steps = Math.max(1, Math.ceil(dist / maxStep));
         for(let i = 1; i <= steps; i++){
           const t = i / steps;
@@ -1697,7 +1789,7 @@ function onMove(e){
             x: last.x + dx * t,
             y: last.y + dy * t,
             pressure: (last.pressure||0.5) + (fp - (last.pressure||0.5)) * t,
-            time: p.time
+            time: lastTime + dt * t
           });
         }
       }
@@ -1963,7 +2055,6 @@ async function loadPDF(file){
 // ── Sync UI to loaded settings ──
 function syncUIFromSettings(){
   // Color
-  document.getElementById('customColor').value = color;
   document.querySelectorAll('.color-swatch').forEach(s => {
     s.classList.toggle('active', s.dataset.color === color);
   });
