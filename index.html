@@ -164,6 +164,9 @@ canvas{display:block;position:absolute;top:0;left:0;}
   <button class="pen-opt" data-pen="fountain">Fountain</button>
   <button class="pen-opt" data-pen="ink">Ink</button>
   <button class="pen-opt" data-pen="ribbon">Ribbon</button>
+  <button class="pen-opt" data-pen="handwriting">Handwriting</button>
+  <button class="pen-opt" data-pen="crystal" style="font-weight:700;color:#1c7ed6;border-color:#1c7ed6;">Crystal ✦</button>
+  <button class="pen-opt" data-pen="chineseBrush">Chinese Brush 毛笔</button>
 </div>
 
 <!-- ═══ Single Unified Bottom Toolbar ═══ -->
@@ -375,7 +378,9 @@ let panX = 0, panY = 0;
 let isPanning = false, panStart = {x:0,y:0};
 let strokes = [], redoStack = [];
 let isDrawing = false, currentPath = [], shapeStart = null;
-let selectedIdx = -1, isDraggingSel = false, dragOff = {x:0,y:0};
+let selectedIndices = [], isDraggingGroup = false, groupDragLast = null;
+let isRectSelecting = false, rectSelStart = null, rectSelEnd = null;
+let isResizing = false, resizeHandleIdx = -1, resizeInitialBounds = null, resizeInitialObjs = null;
 
 // Background settings
 let bgColor = _s.bgColor || '#ffffff';
@@ -425,6 +430,27 @@ const penProfiles = {
 
   // New: Ribbon — very thick bold S-curves, curvature-boosted, smooth silk-like edges
   ribbon:      { widthMul: 7.5, speedSens: 0.3, minW: 0.2, maxW: 28, taper: true, taperLen: 30, taperTip: 0.01, mode:'ribbonStroke' },
+
+  // Touchpad-optimized handwriting pen:
+  // streamline=0.72 kills touchpad jitter, smoothing=0.88 gives silky bezier curves,
+  // thinning=0.42 gives gentle speed-based width variation that looks natural without a stylus
+  handwriting: { widthMul: 1.75, mode:'perfectFreehand', thinning: 0.42, smoothing: 0.88, streamline: 0.72, simulatePressure: true, taperStart: 22, taperEnd: 28 },
+
+  // Chinese Brush — 毛笔 authentic ink brush:
+  // • quartic taper → needle-sharp start/end (nearly invisible tips)
+  // • speedSens=0.90 → hairline on fast strokes, very bold on slow deliberate ones
+  // • dirSens=0.92 → vertical strokes thick, horizontal strokes thin (like a held brush)
+  // • curvBoost=2.4 → curves pool ink on the outside like a real wet brush
+  // • wet-ink bleed layer → soft shadow glow at thick areas = ink soaking into paper
+  chineseBrush: { widthMul: 5.8, speedSens: 0.90, minW: 0.005, maxW: 22, taperLen: 38, taperTip: 0.001, mode:'chineseBrush', dirSens: 0.92, curvBoost: 2.4 },
+
+  // Crystal — the ultimate smooth writing pen:
+  // • smoothing=0.96: near-perfect bezier curves, zero waviness
+  // • streamline=0.82: aggressive jitter elimination for touchpad/mouse
+  // • thinning=0.20: gel-pen consistency (barely any width variation = crystal-clear letterforms)
+  // • sine-easing tapers: graceful start/end like a real pen touching and lifting from paper
+  // • double-layer render: soft ink-depth glow + crisp fill = premium ink-on-paper look
+  crystal: { widthMul: 1.52, mode:'crystalInk', thinning: 0.20, smoothing: 0.96, streamline: 0.82, simulatePressure: true, taperStart: 18, taperEnd: 24 },
 };
 
 // ── Tool Buttons ──
@@ -736,11 +762,15 @@ function preprocessPoints(rawPoints){
     return {...p, speed: Math.hypot(dx, dy) / dt};
   });
 
-  // 2) Wider moving-average (window=5) for silky-smooth width transitions —
-  //    eliminates any residual per-point speed/pressure wobble that would
-  //    otherwise show up as visible bumps ("dhabe") along the stroke edge.
+  // 2) Wider moving-average for silky-smooth width transitions.
+  //    Auto-detect dense touchpad input (avg dist < 3px) and use a wider
+  //    window (W=3) to kill the extra jitter touchpads produce.
+  let totalDist = 0;
+  for(let i = 1; i < pts.length; i++) totalDist += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+  const avgDist = pts.length > 1 ? totalDist / (pts.length - 1) : 10;
+  const W = avgDist < 3 ? 3 : 2;
+
   const smoothed = [];
-  const W = 2;
   for(let i = 0; i < pts.length; i++){
     let sx=0, sy=0, sp=0, ss=0, n=0;
     for(let j = Math.max(0,i-W); j <= Math.min(pts.length-1,i+W); j++){
@@ -792,6 +822,47 @@ function drawPath(c, obj){
   const raw = obj.points;
   if(raw.length < 2) return;
   const profile = penProfiles[obj.pen || 'medium'];
+
+  // ── Crystal Ink — premium gel-pen renderer ──
+  // Double-layer: soft ink-depth glow underneath + crisp solid fill on top
+  // Sine-easing tapers for graceful pen touch/lift feel
+  if(profile.mode === 'crystalInk' && window.__getStroke){
+    const pfPoints = raw.map(p => [p.x, p.y, p.pressure || 0.5]);
+    const sineOut = t => Math.sin(t * Math.PI * 0.5);
+    const stroke = window.__getStroke(pfPoints, {
+      size: Math.max(1.1, obj.lineWidth * (profile.widthMul || 1.52)),
+      thinning: profile.thinning ?? 0.20,
+      smoothing: profile.smoothing ?? 0.96,
+      streamline: profile.streamline ?? 0.82,
+      simulatePressure: profile.simulatePressure ?? true,
+      easing: t => t,
+      start: { taper: profile.taperStart || 18, easing: sineOut, cap: false },
+      end:   { taper: profile.taperEnd   || 24, easing: sineOut, cap: false },
+      last: obj.last !== false
+    });
+    if(!stroke.length) return;
+    // Build smooth closed path once
+    c.beginPath();
+    c.moveTo(stroke[0][0], stroke[0][1]);
+    for(let i = 0; i < stroke.length; i++){
+      const [x0,y0] = stroke[i];
+      const [x1,y1] = stroke[(i+1) % stroke.length];
+      c.quadraticCurveTo(x0, y0, (x0+x1)*0.5, (y0+y1)*0.5);
+    }
+    c.closePath();
+    // Layer 1: subtle ink-depth glow (ink soaking into paper feel)
+    c.save();
+    c.shadowColor = obj.color;
+    c.shadowBlur = 1.4 / zoom;
+    c.globalAlpha = 0.18;
+    c.fillStyle = obj.color;
+    c.fill();
+    c.restore();
+    // Layer 2: crisp opaque fill
+    c.fillStyle = obj.color;
+    c.fill();
+    return;
+  }
 
   // Perfect-freehand path: uses raw input directly (library does its own smoothing)
   if(profile.mode === 'perfectFreehand' && window.__getStroke){
@@ -930,6 +1001,101 @@ function drawPath(c, obj){
     c.lineTo(right[0].x, right[0].y);
     c.lineTo(calPts[0].x, calPts[0].y);
     c.closePath();
+    c.fill();
+
+  } else if(profile.mode === 'chineseBrush'){
+    // ═══ CHINESE BRUSH 毛笔 ═══
+    // Three extra smoothing passes for silk-smooth curves
+    const cPts = smoothPoints(smoothPoints(smoothPoints(pts, 1), 1), 1);
+    const N = cPts.length;
+    if(N < 3){
+      c.beginPath(); c.fillStyle=obj.color;
+      c.arc(cPts[0].x, cPts[0].y, obj.lineWidth * profile.widthMul * 0.3, 0, Math.PI*2);
+      c.fill(); return;
+    }
+
+    const left = [], right = [];
+    const taperLen = Math.min(profile.taperLen||38, N * 0.42);
+    const taperTip  = profile.taperTip  || 0.001;
+    const dirSens   = profile.dirSens   || 0.92;
+    const curvBoost = profile.curvBoost || 2.4;
+
+    // Smoothed curvature (wider window = more ink pooling on curves)
+    const curvArr = new Array(N).fill(0);
+    for(let i=3;i<N-3;i++){
+      const ax=cPts[i-3].x-cPts[i].x, ay=cPts[i-3].y-cPts[i].y;
+      const bx=cPts[i+3].x-cPts[i].x, by=cPts[i+3].y-cPts[i].y;
+      const cr=Math.abs(ax*by-ay*bx);
+      const mA=Math.hypot(ax,ay), mB=Math.hypot(bx,by);
+      if(mA>0.1&&mB>0.1) curvArr[i]=Math.min(cr/(mA*mB), 1.0);
+    }
+    const sCurv = new Array(N).fill(0);
+    for(let i=0;i<N;i++){
+      let s=0,n=0;
+      for(let j=Math.max(0,i-6);j<=Math.min(N-1,i+6);j++){s+=curvArr[j];n++;}
+      sCurv[i]=s/n;
+    }
+
+    let maxW = 0;
+    for(let i = 0; i < N; i++){
+      let w = widthAt(cPts[i], obj.lineWidth, profile) * 0.5;
+
+      // Direction: vertical = thick, horizontal = thin
+      const bk=Math.max(0,i-6), fw=Math.min(N-1,i+6);
+      const angle = Math.atan2(cPts[fw].y-cPts[bk].y, cPts[fw].x-cPts[bk].x);
+      const vertF = Math.abs(Math.sin(angle));
+      w *= (1-dirSens) + dirSens*(0.04 + 0.96*vertF);
+
+      // Curvature pooling — curves get heavier ink
+      w *= 1 + sCurv[i] * curvBoost;
+
+      // Quartic taper — ultra-needle tips (t^4 is sharper than cubic t^3)
+      let taper = 1;
+      if(i < taperLen){
+        const t = i / taperLen;
+        taper = taperTip + (1-taperTip) * t*t*t*t;
+      }
+      if(i > N-1-taperLen){
+        const t = (N-1-i) / taperLen;
+        taper = Math.min(taper, taperTip + (1-taperTip)*t*t*t*t);
+      }
+      w *= taper;
+      maxW = Math.max(maxW, w*2);
+
+      const nx=-Math.sin(angle)*w, ny=Math.cos(angle)*w;
+      left.push({x:cPts[i].x+nx, y:cPts[i].y+ny});
+      right.push({x:cPts[i].x-nx, y:cPts[i].y-ny});
+    }
+
+    function buildChinesePath(){
+      c.beginPath();
+      c.moveTo(cPts[0].x, cPts[0].y);
+      for(let i=0;i<left.length;i++){
+        if(i<3){ c.lineTo(left[i].x, left[i].y); }
+        else { const xc=(left[i-1].x+left[i].x)*0.5, yc=(left[i-1].y+left[i].y)*0.5; c.quadraticCurveTo(left[i-1].x,left[i-1].y,xc,yc); }
+      }
+      c.lineTo(cPts[N-1].x, cPts[N-1].y);
+      for(let i=right.length-1;i>=0;i--){
+        if(i>right.length-4){ c.lineTo(right[i].x, right[i].y); }
+        else { const xc=(right[i+1].x+right[i].x)*0.5, yc=(right[i+1].y+right[i].y)*0.5; c.quadraticCurveTo(right[i+1].x,right[i+1].y,xc,yc); }
+      }
+      c.lineTo(cPts[0].x, cPts[0].y);
+      c.closePath();
+    }
+
+    // Layer 1: wet ink bleed — soft glow scales with stroke thickness
+    c.save();
+    buildChinesePath();
+    c.shadowColor = obj.color;
+    c.shadowBlur = Math.min(maxW * 0.3, 6) / zoom;
+    c.globalAlpha = 0.22;
+    c.fillStyle = obj.color;
+    c.fill();
+    c.restore();
+
+    // Layer 2: crisp solid ink fill
+    buildChinesePath();
+    c.fillStyle = obj.color;
     c.fill();
 
   } else if(profile.mode === 'directionBrush'){
@@ -1514,24 +1680,89 @@ function hitTest(p){
   return -1;
 }
 
+function getSelectionBounds(){
+  if(!selectedIndices.length) return null;
+  let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+  selectedIndices.forEach(idx=>{
+    const b=getBounds(strokes[idx]);
+    x0=Math.min(x0,b.x); y0=Math.min(y0,b.y);
+    x1=Math.max(x1,b.x+b.w); y1=Math.max(y1,b.y+b.h);
+  });
+  return{x:x0,y:y0,w:x1-x0,h:y1-y0};
+}
+
+// 8 handles: TL,TM,TR,MR,BR,BM,BL,ML
+function getHandles(b){
+  return[
+    {x:b.x,        y:b.y,        cur:'nwse-resize'},
+    {x:b.x+b.w/2,  y:b.y,        cur:'ns-resize'},
+    {x:b.x+b.w,    y:b.y,        cur:'nesw-resize'},
+    {x:b.x+b.w,    y:b.y+b.h/2,  cur:'ew-resize'},
+    {x:b.x+b.w,    y:b.y+b.h,    cur:'nwse-resize'},
+    {x:b.x+b.w/2,  y:b.y+b.h,    cur:'ns-resize'},
+    {x:b.x,        y:b.y+b.h,    cur:'nesw-resize'},
+    {x:b.x,        y:b.y+b.h/2,  cur:'ew-resize'},
+  ];
+}
+
+function hitHandle(p,b){
+  const hs=8/zoom;
+  const handles=getHandles(b);
+  for(let i=0;i<handles.length;i++){
+    const h=handles[i];
+    if(Math.abs(p.x-h.x)<=hs&&Math.abs(p.y-h.y)<=hs) return i;
+  }
+  return -1;
+}
+
+function applyBoundsTransform(obj,oldB,newB){
+  const sx=(oldB.w>0)?newB.w/oldB.w:1;
+  const sy=(oldB.h>0)?newB.h/oldB.h:1;
+  const mapX=x=>newB.x+(x-oldB.x)*sx;
+  const mapY=y=>newB.y+(y-oldB.y)*sy;
+  if(obj.type==='rect'||obj.type==='circle'||obj.type==='diamond'||obj.type==='image'){
+    obj.x=mapX(obj.x); obj.y=mapY(obj.y); obj.w*=sx; obj.h*=sy;
+  } else if(obj.type==='line'||obj.type==='arrow'){
+    obj.x1=mapX(obj.x1); obj.y1=mapY(obj.y1); obj.x2=mapX(obj.x2); obj.y2=mapY(obj.y2);
+  } else if(obj.type==='path'){
+    obj.points.forEach(pt=>{pt.x=mapX(pt.x);pt.y=mapY(pt.y);});
+  } else if(obj.type==='text'){
+    obj.x=mapX(obj.x); obj.y=mapY(obj.y);
+    obj.fontSize=Math.max(8,obj.fontSize*Math.max(Math.abs(sx),Math.abs(sy)));
+  }
+}
+
 function drawSelection(){
   const w=wrap.clientWidth, h=wrap.clientHeight;
   selCtx.clearRect(0,0,w,h);
-  if(selectedIdx<0||selectedIdx>=strokes.length) return;
-  const b=getBounds(strokes[selectedIdx]);
   selCtx.save();
   selCtx.translate(panX,panY);
   selCtx.scale(zoom,zoom);
-  selCtx.strokeStyle='#1c7ed6';
-  selCtx.lineWidth=1.2/zoom;
-  selCtx.setLineDash([5/zoom,4/zoom]);
-  selCtx.strokeRect(b.x,b.y,b.w,b.h);
-  selCtx.setLineDash([]);
-  const hs=4/zoom;
-  [[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]].forEach(([hx,hy])=>{
-    selCtx.fillStyle='#fff';selCtx.fillRect(hx-hs,hy-hs,hs*2,hs*2);
-    selCtx.strokeStyle='#1c7ed6';selCtx.strokeRect(hx-hs,hy-hs,hs*2,hs*2);
-  });
+
+  // Rectangle selection preview
+  if(isRectSelecting&&rectSelStart&&rectSelEnd){
+    const rx=Math.min(rectSelStart.x,rectSelEnd.x), ry=Math.min(rectSelStart.y,rectSelEnd.y);
+    const rw=Math.abs(rectSelEnd.x-rectSelStart.x), rh=Math.abs(rectSelEnd.y-rectSelStart.y);
+    selCtx.strokeStyle='#1c7ed6'; selCtx.lineWidth=1.5/zoom;
+    selCtx.setLineDash([5/zoom,4/zoom]);
+    selCtx.strokeRect(rx,ry,rw,rh);
+    selCtx.setLineDash([]);
+    selCtx.fillStyle='rgba(28,126,214,0.08)';
+    selCtx.fillRect(rx,ry,rw,rh);
+  }
+
+  // Combined bounding box + 8 handles for selection
+  const selB=getSelectionBounds();
+  if(selB&&selectedIndices.length>0){
+    selCtx.strokeStyle='#1c7ed6'; selCtx.lineWidth=1.5/zoom;
+    selCtx.setLineDash([]); selCtx.strokeRect(selB.x,selB.y,selB.w,selB.h);
+    const hs=5/zoom;
+    getHandles(selB).forEach(h=>{
+      selCtx.fillStyle='#fff'; selCtx.fillRect(h.x-hs,h.y-hs,hs*2,hs*2);
+      selCtx.strokeStyle='#1c7ed6'; selCtx.lineWidth=1.5/zoom; selCtx.strokeRect(h.x-hs,h.y-hs,hs*2,hs*2);
+    });
+  }
+
   selCtx.restore();
 }
 
@@ -1560,19 +1791,31 @@ wrap.addEventListener('pointermove', e => {
       if(tool==='pen'||tool==='eraser'){
         currentPath = [p];
       } else if(tool==='select'){
-        const hit = hitTest(p);
-        selectedIdx = hit;
-        drawSelection();
-        if(hit >= 0){
-          isDraggingSel = true;
-          const b = getBounds(strokes[hit]);
-          dragOff = {x:p.x-b.x, y:p.y-b.y};
+        const hit=hitTest(p);
+        if(hit>=0 && selectedIndices.includes(hit)){
+          isDraggingGroup=true; groupDragLast={x:p.x,y:p.y};
+        } else {
+          if(!ctrlHeld) selectedIndices=[];
+          isRectSelecting=true; rectSelStart=p; rectSelEnd=p;
         }
+        drawSelection();
       }
       return;
     }
     // Continue the stroke
     onMove(e);
+    return;
+  }
+
+  // Cursor management for select tool
+  if(tool==='select' && !isDraggingGroup && !isResizing && !isRectSelecting){
+    const p=canvasCoord(e);
+    const selB=getSelectionBounds();
+    if(selB&&selectedIndices.length>0){
+      const hIdx=hitHandle(p,selB);
+      if(hIdx>=0){wrap.style.cursor=getHandles(selB)[hIdx].cur;return;}
+    }
+    wrap.style.cursor=hitTest(p)>=0?'move':'default';
     return;
   }
 
@@ -1691,6 +1934,27 @@ document.addEventListener('keyup', e => {
   }
 });
 
+// Reset Ctrl state when tab loses focus (e.g. Ctrl+Tab switching tabs)
+// so that ctrlHeld doesn't stay true when returning to this tab
+window.addEventListener('blur', () => {
+  if(ctrlHeld){
+    ctrlHeld = false;
+    if(ctrlDrawing){
+      ctrlDrawing = false;
+      finishStroke();
+    }
+  }
+});
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden && ctrlHeld){
+    ctrlHeld = false;
+    if(ctrlDrawing){
+      ctrlDrawing = false;
+      finishStroke();
+    }
+  }
+});
+
 function finishStroke(){
   if(!isDrawing) return;
   isDrawing = false;
@@ -1698,7 +1962,7 @@ function finishStroke(){
     if(currentPath.length > 1){
       strokes.push({
         type:'path', points:currentPath,
-        color: tool==='eraser'?'#ffffff':color,
+        color: tool==='eraser'?bgColor:color,
         lineWidth: tool==='eraser'?lineWidth*3:lineWidth,
         pen: tool==='eraser'?'medium':penStyle
       });
@@ -1724,9 +1988,35 @@ function onDown(e){
   if(e.button !== 0 && e.button !== undefined) return;
 
   if(tool==='select'){
-    const hit=hitTest(p);selectedIdx=hit;drawSelection();
-    if(hit>=0){isDraggingSel=true;const b=getBounds(strokes[hit]);dragOff={x:p.x-b.x,y:p.y-b.y};}
-    return;
+    const selB=getSelectionBounds();
+    // 1. Check resize handles first
+    if(selB&&selectedIndices.length>0){
+      const hIdx=hitHandle(p,selB);
+      if(hIdx>=0){
+        isResizing=true; resizeHandleIdx=hIdx;
+        resizeInitialBounds={...selB};
+        resizeInitialObjs=selectedIndices.map(idx=>JSON.parse(JSON.stringify(strokes[idx])));
+        drawSelection(); return;
+      }
+    }
+    // 2. Click on object
+    const hit=hitTest(p);
+    if(hit>=0){
+      if(e.ctrlKey||e.metaKey){
+        // Ctrl+click: toggle selection
+        selectedIndices=selectedIndices.includes(hit)
+          ?selectedIndices.filter(i=>i!==hit)
+          :[...selectedIndices,hit];
+      } else {
+        if(!selectedIndices.includes(hit)) selectedIndices=[hit];
+        isDraggingGroup=true; groupDragLast={x:p.x,y:p.y};
+      }
+      drawSelection(); return;
+    }
+    // 3. Click on empty — start rect selection
+    if(!e.ctrlKey&&!e.metaKey) selectedIndices=[];
+    isRectSelecting=true; rectSelStart=p; rectSelEnd=p;
+    drawSelection(); return;
   }
   if(tool==='text'){
     commitText();
@@ -1748,10 +2038,39 @@ function onMove(e){
   const p = canvasCoord(e);
 
   if(isPanning){ panX=e.clientX-panStart.x; panY=e.clientY-panStart.y; redrawAll(); drawSelection(); return; }
-  if(isDraggingSel && selectedIdx>=0){
-    const b=getBounds(strokes[selectedIdx]);
-    moveObject(strokes[selectedIdx], p.x-b.x-dragOff.x, p.y-b.y-dragOff.y);
+  if(isDraggingGroup && selectedIndices.length>0){
+    const dx=p.x-groupDragLast.x, dy=p.y-groupDragLast.y;
+    selectedIndices.forEach(idx=>moveObject(strokes[idx],dx,dy));
+    groupDragLast={x:p.x,y:p.y};
     redrawAll(); drawSelection(); return;
+  }
+  if(isResizing&&resizeInitialBounds){
+    const b=resizeInitialBounds;
+    let newB={...b};
+    // 0:TL,1:TM,2:TR,3:MR,4:BR,5:BM,6:BL,7:ML
+    if(resizeHandleIdx===0){newB.x=p.x;newB.y=p.y;newB.w=b.x+b.w-p.x;newB.h=b.y+b.h-p.y;}
+    else if(resizeHandleIdx===1){newB.y=p.y;newB.h=b.y+b.h-p.y;}
+    else if(resizeHandleIdx===2){newB.y=p.y;newB.w=p.x-b.x;newB.h=b.y+b.h-p.y;}
+    else if(resizeHandleIdx===3){newB.w=p.x-b.x;}
+    else if(resizeHandleIdx===4){newB.w=p.x-b.x;newB.h=p.y-b.y;}
+    else if(resizeHandleIdx===5){newB.h=p.y-b.y;}
+    else if(resizeHandleIdx===6){newB.x=p.x;newB.w=b.x+b.w-p.x;newB.h=p.y-b.y;}
+    else if(resizeHandleIdx===7){newB.x=p.x;newB.w=b.x+b.w-p.x;}
+    newB.w=Math.max(10,newB.w); newB.h=Math.max(10,newB.h);
+    selectedIndices.forEach((idx,i)=>{
+      const src=resizeInitialObjs[i];
+      const savedImg=strokes[idx]._img; // preserve HTMLImageElement (not JSON-serializable)
+      Object.keys(src).forEach(k=>{
+        if(typeof src[k]==='object'&&src[k]!==null) strokes[idx][k]=JSON.parse(JSON.stringify(src[k]));
+        else strokes[idx][k]=src[k];
+      });
+      if(savedImg) strokes[idx]._img=savedImg; // restore so image draws immediately without reload
+      applyBoundsTransform(strokes[idx],resizeInitialBounds,newB);
+    });
+    redrawAll(); drawSelection(); return;
+  }
+  if(isRectSelecting&&rectSelStart){
+    rectSelEnd=p; drawSelection(); return;
   }
   if(!isDrawing) return;
 
@@ -1797,7 +2116,7 @@ function onMove(e){
     // Fast draw: blit cached strokes + only render current stroke (big perf win)
     redrawFast({
       type:'path', points: currentPath,
-      color: tool==='eraser'?'#ffffff':color,
+      color: tool==='eraser'?bgColor:color,
       lineWidth: tool==='eraser'?lineWidth*3:lineWidth,
       pen: tool==='eraser'?'medium':penStyle,
       last: false
@@ -1829,7 +2148,21 @@ function onMove(e){
 
 function onUp(e){
   if(isPanning){isPanning=false;wrap.style.cursor=tool==='select'?'default':'crosshair';return;}
-  if(isDraggingSel){isDraggingSel=false;return;}
+  if(isResizing){isResizing=false;resizeHandleIdx=-1;resizeInitialBounds=null;resizeInitialObjs=null;drawSelection();return;}
+  if(isDraggingGroup){isDraggingGroup=false;drawSelection();return;}
+  if(isRectSelecting){
+    isRectSelecting=false;
+    if(rectSelStart&&rectSelEnd){
+      const rx=Math.min(rectSelStart.x,rectSelEnd.x), ry=Math.min(rectSelStart.y,rectSelEnd.y);
+      const rx2=Math.max(rectSelStart.x,rectSelEnd.x), ry2=Math.max(rectSelStart.y,rectSelEnd.y);
+      const newSel=strokes.map((s,i)=>{
+        const b=getBounds(s);
+        return(b.x<rx2&&b.x+b.w>rx&&b.y<ry2&&b.y+b.h>ry)?i:-1;
+      }).filter(i=>i>=0);
+      selectedIndices=ctrlHeld?[...new Set([...selectedIndices,...newSel])]:newSel;
+    }
+    rectSelStart=null; rectSelEnd=null; drawSelection(); return;
+  }
   if(!isDrawing) return;
   isDrawing=false;
   const p = canvasCoord(e);
@@ -1838,7 +2171,7 @@ function onUp(e){
     if(currentPath.length>1){
       strokes.push({
         type:'path',points:currentPath,
-        color:tool==='eraser'?'#ffffff':color,
+        color:tool==='eraser'?bgColor:color,
         lineWidth:tool==='eraser'?lineWidth*3:lineWidth,
         pen:tool==='eraser'?'medium':penStyle
       });
@@ -1907,14 +2240,14 @@ document.getElementById('zoomOut').addEventListener('click',()=>setZoom(zoom/1.2
 document.getElementById('zoomFit').addEventListener('click',()=>{zoom=1;panX=0;panY=0;setZoom(1);});
 
 // ── Undo/Redo ──
-function undo(){if(!strokes.length)return;redoStack.push(strokes.pop());selectedIdx=-1;redrawAll();drawSelection();}
+function undo(){if(!strokes.length)return;redoStack.push(strokes.pop());selectedIndices=[];redrawAll();drawSelection();}
 function redo(){if(!redoStack.length)return;strokes.push(redoStack.pop());redrawAll();}
 document.getElementById('undoBtn').addEventListener('click',undo);
 document.getElementById('redoBtn').addEventListener('click',redo);
 
 // ── Clear ──
 document.getElementById('clearBtn').addEventListener('click',()=>{
-  if(!strokes.length)return;redoStack.push(...strokes);strokes=[];selectedIdx=-1;redrawAll();drawSelection();
+  if(!strokes.length)return;redoStack.push(...strokes);strokes=[];selectedIndices=[];redrawAll();drawSelection();
 });
 
 // ── Save PNG ──
@@ -2095,12 +2428,16 @@ document.addEventListener('keydown', e => {
   if(e.ctrlKey&&!e.shiftKey&&(e.key==='q'||e.key==='Q')){e.preventDefault();document.querySelector('.tool-btn[data-tool="pen"]').click();return;}
   // Ctrl+E → Eraser
   if(e.ctrlKey&&(e.key==='e'||e.key==='E')){e.preventDefault();document.querySelector('.tool-btn[data-tool="eraser"]').click();return;}
+  // Ctrl+: → Text
+  if(e.ctrlKey&&(e.key===':'||e.key===';')){e.preventDefault();document.querySelector('.tool-btn[data-tool="text"]').click();return;}
 
   if(e.ctrlKey&&e.key==='z'){e.preventDefault();undo();return;}
   if((e.ctrlKey&&e.key==='y')||(e.ctrlKey&&e.shiftKey&&e.key==='Z')){e.preventDefault();redo();return;}
-  if(e.key==='Delete'&&selectedIdx>=0){
-    redoStack.push(strokes.splice(selectedIdx,1)[0]);
-    selectedIdx=-1;redrawAll();drawSelection();return;
+  if(e.key==='Escape'&&tool==='select'){selectedIndices=[];drawSelection();return;}
+  if(e.key==='Delete'&&selectedIndices.length>0){
+    const sorted=[...selectedIndices].sort((a,b)=>b-a);
+    sorted.forEach(idx=>redoStack.push(strokes.splice(idx,1)[0]));
+    selectedIndices=[];redrawAll();drawSelection();return;
   }
   const keyMap={v:'select',p:'pen',e:'eraser',r:'rect',d:'diamond',o:'circle',a:'arrow',l:'line',t:'text'};
   if(keyMap[e.key]) document.querySelector(`.tool-btn[data-tool="${keyMap[e.key]}"]`).click();
